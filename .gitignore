@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Banco de dados real e dados coletados (NUNCA versionar dados reais)
+# ---------------------------------------------------------------------------
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite
+data/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# Variáveis de ambiente / credenciais
+.env
+.env.local
+*.local.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.spec.bak
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Testes / cobertura / cache
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Empacotamento PyInstaller (saída de build)
+/dist/
+/build/
+
+# IDE / SO
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Exportações geradas localmente (relatórios CSV)
+exports/

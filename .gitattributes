@@ -1,0 +1,13 @@
+# Normaliza finais de linha no repositorio: LF por padrao.
+* text=auto eol=lf
+
+# Scripts do PowerShell funcionam melhor com CRLF no Windows.
+*.ps1 text eol=crlf
+
+# Arquivos binarios (nao normalizar).
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.png binary
+*.ico binary
+*.exe binary

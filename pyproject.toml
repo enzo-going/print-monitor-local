@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "print-monitor-local"
+version = "0.1.0"
+description = "Ferramenta local para monitorar impressoras de rede e contabilizar o volume de impressao ao longo do tempo."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "enzo-going" }]
+keywords = ["impressoras", "snmp", "monitoramento", "contadores", "sqlite"]
+
+# Runtime da Fase 1 nao exige dependencias externas (apenas biblioteca padrao).
+dependencies = []
+
+[project.optional-dependencies]
+# Carregamento de .env (opcional; o codigo degrada graciosamente sem ele).
+env = ["python-dotenv>=1.0"]
+# Coleta SNMP real (Fase 3).
+snmp = ["pysnmp>=6.0"]
+# Dashboard local (Fase 2).
+dashboard = ["flask>=3.0"]
+# Empacotamento Windows (Fase 5).
+build = ["pyinstaller>=6.0"]
+# Ferramentas de desenvolvimento e testes.
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+print-monitor = "print_monitor.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/print_monitor"]
+
+[tool.pytest.ini_options]
+# Permite importar o pacote a partir de src/ sem instalar (roda offline).
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,3 @@
+# Esta pasta guarda o banco SQLite local (data/print_monitor.db).
+# O banco e os dados coletados NAO sao versionados (ver .gitignore).
+# Este arquivo .gitkeep apenas preserva a pasta no repositorio.
