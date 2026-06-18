@@ -38,12 +38,12 @@ tipo: nota
 - [x] Teste controlado de portas/serviços (limite de hosts, timeouts curtos).
 - [x] Documentar riscos (`docs/descoberta-rede.md`).
 
-## Fase 5 — Empacotamento Windows
+## Fase 5 — Empacotamento Windows ✅
 
-- [ ] Build com PyInstaller.
-- [ ] `build.ps1`.
-- [ ] Banco SQLite fora do executável.
-- [ ] Validar execução via Python e via `.exe`.
+- [x] Build com PyInstaller (arquivo único).
+- [x] `build.ps1` (ambiente isolado para executável enxuto).
+- [x] Banco SQLite fora do executável (`config.app_base_dir`).
+- [x] Validar execução via Python e via `.exe` (CLI e dashboard).
 
 ## Ligações
 
