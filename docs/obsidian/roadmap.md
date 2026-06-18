@@ -15,14 +15,14 @@ tipo: nota
 - [x] Relatório mensal por impressora.
 - [x] Testes automatizados (cálculo e persistência).
 
-## Fase 2 — Dashboard e filtros
+## Fase 2 — Dashboard e filtros ✅
 
-- [ ] Dashboard local (Flask).
-- [ ] Listagem de impressoras.
-- [ ] Filtros por mês, impressora, IP e local.
-- [ ] Total mensal e ranking das mais usadas.
-- [ ] Exportação CSV.
-- [ ] Testes básicos.
+- [x] Dashboard local (Flask).
+- [x] Listagem de impressoras.
+- [x] Filtros por mês, impressora, IP e local.
+- [x] Total mensal e ranking das mais usadas.
+- [x] Exportação CSV.
+- [x] Testes básicos.
 
 ## Fase 3 — Coleta SNMP real
 

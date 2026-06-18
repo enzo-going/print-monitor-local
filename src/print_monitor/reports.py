@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from .db import Database
-from .models import Reading
+from .models import Printer, Reading
 
 
 def month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
@@ -26,6 +26,8 @@ def month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
     """
     if not 1 <= month <= 12:
         raise ValueError("Mes deve estar entre 1 e 12.")
+    if not 1 <= year <= 9999:
+        raise ValueError("Ano fora do intervalo suportado (1-9999).")
     start = datetime(year, month, 1, tzinfo=timezone.utc)
     last_day = calendar.monthrange(year, month)[1]
     end = datetime(year, month, last_day, tzinfo=timezone.utc) + timedelta(
@@ -72,15 +74,51 @@ class PrinterVolume:
     volume: int
 
 
-def monthly_report(db: Database, year: int, month: int) -> list[PrinterVolume]:
+def filter_printers(
+    printers: list[Printer],
+    printer_id: int | None = None,
+    ip: str | None = None,
+    location: str | None = None,
+) -> list[Printer]:
+    """Aplica filtros opcionais a uma lista de impressoras.
+
+    - ``printer_id``: correspondencia exata;
+    - ``ip``: correspondencia parcial, sem diferenciar maiusculas;
+    - ``location``: correspondencia parcial, sem diferenciar maiusculas.
+    """
+    ip_term = (ip or "").strip().lower()
+    loc_term = (location or "").strip().lower()
+    result = []
+    for p in printers:
+        if printer_id is not None and p.id != printer_id:
+            continue
+        if ip_term and ip_term not in p.ip.lower():
+            continue
+        if loc_term and loc_term not in (p.location or "").lower():
+            continue
+        result.append(p)
+    return result
+
+
+def monthly_report(
+    db: Database,
+    year: int,
+    month: int,
+    printer_id: int | None = None,
+    ip: str | None = None,
+    location: str | None = None,
+) -> list[PrinterVolume]:
     """Relatorio mensal: volume por impressora, ordenado do maior para o menor.
 
-    Inclui todas as impressoras cadastradas (volume 0 quando nao houver leituras
-    suficientes no mes).
+    Inclui todas as impressoras que atendem aos filtros (volume 0 quando nao
+    houver leituras suficientes no mes). Sem filtros, considera todas.
     """
     start, end = month_bounds(year, month)
+    printers = filter_printers(
+        db.list_printers(), printer_id=printer_id, ip=ip, location=location
+    )
     result: list[PrinterVolume] = []
-    for printer in db.list_printers():
+    for printer in printers:
         assert printer.id is not None
         readings = db.list_readings(printer_id=printer.id, start=start, end=end)
         result.append(
@@ -96,7 +134,21 @@ def monthly_report(db: Database, year: int, month: int) -> list[PrinterVolume]:
     return result
 
 
-def ranking(db: Database, year: int, month: int, limit: int | None = None) -> list[PrinterVolume]:
+def ranking(
+    db: Database,
+    year: int,
+    month: int,
+    limit: int | None = None,
+    printer_id: int | None = None,
+    ip: str | None = None,
+    location: str | None = None,
+) -> list[PrinterVolume]:
     """Ranking das impressoras mais usadas no mes (atalho sobre o relatorio)."""
-    report = [pv for pv in monthly_report(db, year, month) if pv.volume > 0]
+    report = [
+        pv
+        for pv in monthly_report(
+            db, year, month, printer_id=printer_id, ip=ip, location=location
+        )
+        if pv.volume > 0
+    ]
     return report[:limit] if limit else report
