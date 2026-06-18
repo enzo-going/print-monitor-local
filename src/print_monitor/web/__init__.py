@@ -30,7 +30,10 @@ def _parse_int(value: str | None, default: int | None = None) -> int | None:
 
 
 def create_app(db_path: str | Path | None = None) -> Flask:
-    app = Flask(__name__)
+    # template_folder explicito: resolve corretamente tanto em execucao normal
+    # quanto empacotado com PyInstaller (templates incluidos via --add-data).
+    template_folder = str(Path(__file__).resolve().parent / "templates")
+    app = Flask(__name__, template_folder=template_folder)
     config = load_config()
     app.config["DB_PATH"] = str(db_path or config.db_path)
 
