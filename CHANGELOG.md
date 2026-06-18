@@ -3,6 +3,19 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.4.0] — 2026-06-18
+
+### Adicionado
+
+- Descoberta de impressoras na rede (`print-monitor discover`) com abordagem
+  segura: faixa CIDR explícita, limite de hosts, timeouts curtos, concorrência
+  limitada e verificação de poucas portas (9100/631/515).
+- Confirmação opcional via SNMP (`--snmp`) e cadastro automático dos hosts
+  encontrados (`--register`).
+- Documentação de riscos e responsabilidade em `docs/descoberta-rede.md`.
+- Testes da descoberta (contagem de hosts, sondagem TCP via loopback, limite de
+  segurança).
+
 ## [0.3.0] — 2026-06-18
 
 ### Adicionado

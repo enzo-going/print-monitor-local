@@ -17,7 +17,7 @@ pela **diferença entre leituras**.
 | 1    | Estrutura, banco, cadastro, coleta mockada, cálculo, relatório  | Disponível  |
 | 2    | Dashboard local, filtros, ranking, exportação CSV               | Disponível  |
 | 3    | Coleta SNMP real com fallback mockado                           | Disponível  |
-| 4    | Descoberta de impressoras na rede (abordagem segura)            | Planejada   |
+| 4    | Descoberta de impressoras na rede (abordagem segura)            | Disponível  |
 | 5    | Empacotamento Windows com PyInstaller                          | Planejada   |
 
 ## Requisitos
@@ -69,6 +69,9 @@ python -m print_monitor export --year 2026 --month 6 --location Financeiro --out
 
 # 7. Dashboard local (Flask) em http://127.0.0.1:5000
 python -m print_monitor serve
+
+# 8. Descobrir impressoras em uma sub-rede (abordagem segura)
+python -m print_monitor discover --network 192.168.0.0/24 --snmp
 ```
 
 > O dashboard exige o extra opcional `dashboard`: `pip install -e ".[dashboard]"`.
