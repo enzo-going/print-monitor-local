@@ -3,6 +3,19 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.2.0] — 2026-06-18
+
+### Adicionado
+
+- Dashboard local em Flask (`print-monitor serve`) com painel de volume mensal.
+- Filtros por mês, impressora, IP (parcial) e local (parcial) no relatório e no
+  dashboard.
+- Ranking das impressoras mais usadas e total mensal no painel.
+- Exportação CSV do relatório mensal, via dashboard (`/export.csv`) e via CLI
+  (`print-monitor export`).
+- Listagem de impressoras no dashboard (`/printers`).
+- Testes do dashboard, dos filtros e da exportação CSV.
+
 ## [0.1.0] — 2026-06-18
 
 ### Adicionado

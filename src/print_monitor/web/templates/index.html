@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — print-monitor-local{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <h2>Filtros</h2>
+  <form class="filters" method="get" action="/">
+    <div>
+      <label for="year">Ano</label>
+      <input type="number" id="year" name="year" value="{{ filters.year }}" min="2000" max="2100">
+    </div>
+    <div>
+      <label for="month">Mês</label>
+      <select id="month" name="month">
+        {% for m in months %}
+          <option value="{{ m }}" {% if m == filters.month %}selected{% endif %}>{{ "%02d"|format(m) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="printer_id">Impressora</label>
+      <select id="printer_id" name="printer_id">
+        <option value="">Todas</option>
+        {% for p in printers %}
+          <option value="{{ p.id }}" {% if p.id == filters.printer_id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="ip">IP (parcial)</label>
+      <input type="text" id="ip" name="ip" value="{{ filters.ip }}" placeholder="192.168.">
+    </div>
+    <div>
+      <label for="location">Local (parcial)</label>
+      <input type="text" id="location" name="location" value="{{ filters.location }}" placeholder="Financeiro">
+    </div>
+    <div>
+      <button type="submit">Aplicar</button>
+    </div>
+    <div>
+      <a class="btn-secondary" href="/export.csv{% if query %}?{{ query }}{% endif %}">Exportar CSV</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Total do mês {{ "%02d"|format(filters.month) }}/{{ filters.year }}</h2>
+  <div class="kpi">{{ "{:,}".format(total).replace(",", ".") }}</div>
+  <div class="muted">impressões no período (soma das diferenças entre leituras)</div>
+</section>
+
+<section class="panel">
+  <h2>Ranking — impressoras mais usadas</h2>
+  {% if ranking %}
+  <table>
+    <thead>
+      <tr><th>#</th><th>Impressora</th><th>IP</th><th>Local</th><th class="num">Volume</th></tr>
+    </thead>
+    <tbody>
+      {% for pv in ranking %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ pv.name }}</td>
+        <td>{{ pv.ip }}</td>
+        <td>{{ pv.location or "-" }}</td>
+        <td class="num">{{ "{:,}".format(pv.volume).replace(",", ".") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Sem volume registrado para os filtros selecionados.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Detalhamento por impressora</h2>
+  {% if report %}
+  <table>
+    <thead>
+      <tr><th>Impressora</th><th>IP</th><th>Local</th><th class="num">Volume</th></tr>
+    </thead>
+    <tbody>
+      {% for pv in report %}
+      <tr>
+        <td>{{ pv.name }}</td>
+        <td>{{ pv.ip }}</td>
+        <td>{{ pv.location or "-" }}</td>
+        <td class="num">{{ "{:,}".format(pv.volume).replace(",", ".") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Nenhuma impressora atende aos filtros.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

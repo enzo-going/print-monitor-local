@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Impressoras — print-monitor-local{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <h2>Impressoras cadastradas</h2>
+  {% if printers %}
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Nome</th><th>IP</th><th>Local</th><th>Modelo</th><th>Ativa</th></tr>
+    </thead>
+    <tbody>
+      {% for p in printers %}
+      <tr>
+        <td>{{ p.id }}</td>
+        <td>{{ p.name }}</td>
+        <td>{{ p.ip }}</td>
+        <td>{{ p.location or "-" }}</td>
+        <td>{{ p.model or "-" }}</td>
+        <td>{{ "Sim" if p.active else "Não" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Nenhuma impressora cadastrada. Use a CLI para cadastrar.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
