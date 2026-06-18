@@ -3,6 +3,29 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.3.0] — 2026-06-18
+
+### Adicionado
+
+- Coleta SNMP (v1/v2c) real implementada em Python puro (BER sobre a biblioteca
+  padrão), sem dependências nativas — facilita o empacotamento.
+- Seleção de backend de coleta (`mock` ou `snmp`) por ambiente
+  (`PRINT_MONITOR_BACKEND`) ou pela flag `--backend` do comando `collect`.
+- Tratamento de impressoras incompatíveis/inacessíveis: a falha de uma não
+  interrompe a coleta das demais; os erros são reportados ao final.
+- Testes do SNMP (codificação BER, GET via loopback UDP, timeout) e da
+  orquestração de coleta.
+
+### Alterado
+
+- O comando `collect` passa a informar o backend usado e a retornar código de
+  saída diferente de zero quando há falhas.
+
+### Removido
+
+- Extra opcional `snmp` (pysnmp): a coleta SNMP não depende mais de bibliotecas
+  externas.
+
 ## [0.2.0] — 2026-06-18
 
 ### Adicionado

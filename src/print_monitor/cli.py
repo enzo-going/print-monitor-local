@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .collector import Collector, MockBackend
+from .collector import Collector, make_backend
 from .config import load_config
 from .db import Database
 from .exports import report_to_csv
@@ -74,18 +74,23 @@ def cmd_list_printers(args: argparse.Namespace) -> int:
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
-    db = _open_db()
-    backend = MockBackend()
-    collector = Collector(db, backend, source="mock")
+    config = load_config()
+    db = Database(config.db_path)
+    db.initialize()
+    backend, source = make_backend(config, override=args.backend)
+    collector = Collector(db, backend, source=source)
+    print(f"Backend de coleta: {source}")
 
     if args.all:
-        readings = collector.collect_all()
-        if not readings:
+        outcome = collector.collect_all()
+        if not outcome.readings and not outcome.failures:
             print("Nenhuma impressora ativa para coletar.")
-        for r in readings:
+        for r in outcome.readings:
             print(f"Impressora {r.printer_id}: contador={r.total_counter}")
+        for printer, error in outcome.failures:
+            print(f"Falha na impressora {printer.id} [{printer.ip}]: {error}", file=sys.stderr)
         db.close()
-        return 0
+        return 1 if outcome.failures else 0
 
     if args.printer_id is None:
         print("Informe --printer-id ou use --all.", file=sys.stderr)
@@ -97,7 +102,12 @@ def cmd_collect(args: argparse.Namespace) -> int:
         print(f"Impressora id={args.printer_id} nao encontrada.", file=sys.stderr)
         db.close()
         return 1
-    reading = collector.collect(printer)
+    try:
+        reading = collector.collect(printer)
+    except Exception as exc:  # falha de backend (SNMP, rede)
+        print(f"Falha ao coletar de {printer.ip}: {exc}", file=sys.stderr)
+        db.close()
+        return 1
     print(f"Impressora {reading.printer_id}: contador={reading.total_counter}")
     db.close()
     return 0
@@ -187,9 +197,14 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_list_printers
     )
 
-    p_col = sub.add_parser("collect", help="Coleta leituras (backend simulado).")
+    p_col = sub.add_parser("collect", help="Coleta leituras (backend mock ou snmp).")
     p_col.add_argument("--printer-id", type=int, help="Id da impressora.")
     p_col.add_argument("--all", action="store_true", help="Coleta todas as ativas.")
+    p_col.add_argument(
+        "--backend",
+        choices=["mock", "snmp"],
+        help="Sobrescreve o backend de coleta (padrao: do ambiente).",
+    )
     p_col.set_defaults(func=cmd_collect)
 
     p_rep = sub.add_parser("report", help="Relatorio mensal de volume.")
