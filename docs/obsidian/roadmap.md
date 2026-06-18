@@ -32,11 +32,11 @@ tipo: nota
 - [x] Tratamento de impressoras incompatíveis (falha não interrompe as demais).
 - [x] Documentar limitações por modelo.
 
-## Fase 4 — Descoberta na rede
+## Fase 4 — Descoberta na rede ✅
 
-- [ ] Descoberta de impressoras (abordagem segura, sem varredura agressiva).
-- [ ] Teste controlado de portas/serviços.
-- [ ] Documentar riscos.
+- [x] Descoberta de impressoras (abordagem segura, sem varredura agressiva).
+- [x] Teste controlado de portas/serviços (limite de hosts, timeouts curtos).
+- [x] Documentar riscos (`docs/descoberta-rede.md`).
 
 ## Fase 5 — Empacotamento Windows
 
