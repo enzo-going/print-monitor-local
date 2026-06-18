@@ -18,7 +18,7 @@ pela **diferença entre leituras**.
 | 2    | Dashboard local, filtros, ranking, exportação CSV               | Disponível  |
 | 3    | Coleta SNMP real com fallback mockado                           | Disponível  |
 | 4    | Descoberta de impressoras na rede (abordagem segura)            | Disponível  |
-| 5    | Empacotamento Windows com PyInstaller                          | Planejada   |
+| 5    | Empacotamento Windows com PyInstaller                          | Disponível  |
 
 ## Requisitos
 
@@ -120,6 +120,19 @@ docs/obsidian/       notas em Markdown compatíveis com Obsidian
 scripts/             execução e geração de dados fictícios
 data/                banco SQLite local (ignorado pelo Git)
 ```
+
+## Executável Windows (.exe)
+
+Para gerar um executável único (não requer Python instalado para rodar):
+
+```powershell
+.\build.ps1
+```
+
+O resultado é `dist\print-monitor.exe` (aproximadamente 12 MB). O banco SQLite é
+criado em `data\print_monitor.db` **ao lado do executável**, fora dele. Sem
+argumentos (duplo clique), o `.exe` inicia o dashboard e abre o navegador.
+Detalhes em [`docs/empacotamento.md`](docs/empacotamento.md).
 
 ## Testes
 

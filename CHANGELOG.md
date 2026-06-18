@@ -3,6 +3,24 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.5.0] — 2026-06-18
+
+### Adicionado
+
+- Empacotamento Windows com PyInstaller: `build.ps1` gera
+  `dist\print-monitor.exe` (arquivo único) a partir de `scripts/pm_entry.py`.
+- Build em ambiente isolado (`.build-venv`) para um executável enxuto (~12 MB),
+  com os templates do dashboard incluídos no pacote.
+- Experiência de duplo clique: sem argumentos, o executável inicia o dashboard
+  e abre o navegador.
+- Documentação de empacotamento em `docs/empacotamento.md`.
+
+### Alterado
+
+- `config.app_base_dir`: em modo empacotado (`sys.frozen`), o banco SQLite e o
+  `.env` passam a ser resolvidos na pasta do executável, mantendo o banco
+  **fora** do `.exe` e gravável.
+
 ## [0.4.0] — 2026-06-18
 
 ### Adicionado
