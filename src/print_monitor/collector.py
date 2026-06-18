@@ -11,9 +11,11 @@ interface, podendo substituir o mock sem alterar o restante do codigo.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Protocol
 
+from .config import Config
 from .db import Database, utcnow
 from .models import Printer, Reading
 
@@ -87,6 +89,40 @@ class Collector:
             source=self.source,
         )
 
-    def collect_all(self, at: datetime | None = None) -> list[Reading]:
-        """Coleta o contador de todas as impressoras ativas."""
-        return [self.collect(p, at=at) for p in self.db.list_printers(only_active=True)]
+    def collect_all(self, at: datetime | None = None) -> "CollectionOutcome":
+        """Coleta o contador de todas as impressoras ativas.
+
+        Uma falha em uma impressora (ex.: incompativel ou inacessivel via SNMP)
+        nao interrompe a coleta das demais: o erro e registrado em ``failures``.
+        """
+        outcome = CollectionOutcome()
+        for printer in self.db.list_printers(only_active=True):
+            try:
+                outcome.readings.append(self.collect(printer, at=at))
+            except Exception as exc:  # backend pode lancar erros variados (SNMP, rede)
+                outcome.failures.append((printer, str(exc)))
+        return outcome
+
+
+@dataclass
+class CollectionOutcome:
+    """Resultado de uma coleta em lote: leituras bem-sucedidas e falhas."""
+
+    readings: list[Reading] = field(default_factory=list)
+    failures: list[tuple[Printer, str]] = field(default_factory=list)
+
+
+def make_backend(
+    config: Config, override: str | None = None
+) -> tuple[CounterBackend, str]:
+    """Cria o backend de coleta conforme a configuracao.
+
+    Retorna ``(backend, rotulo)``. Backends suportados: ``mock`` (Fase 1) e
+    ``snmp`` (Fase 3). O rotulo e usado como ``source`` das leituras.
+    """
+    name = (override or config.backend or "mock").strip().lower()
+    if name == "snmp":
+        from .snmp import SNMPBackend
+
+        return SNMPBackend(config), "snmp"
+    return MockBackend(), "mock"

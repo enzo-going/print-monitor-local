@@ -24,13 +24,13 @@ tipo: nota
 - [x] Exportação CSV.
 - [x] Testes básicos.
 
-## Fase 3 — Coleta SNMP real
+## Fase 3 — Coleta SNMP real ✅
 
-- [ ] Leitura SNMP real (`prtMarkerLifeCount`).
-- [ ] Fallback mockado para testes.
-- [ ] Community string via `.env`.
-- [ ] Tratamento de impressoras incompatíveis.
-- [ ] Documentar limitações por modelo.
+- [x] Leitura SNMP real (`prtMarkerLifeCount`), em Python puro.
+- [x] Fallback mockado (backend selecionável: `mock`/`snmp`).
+- [x] Community string via `.env`.
+- [x] Tratamento de impressoras incompatíveis (falha não interrompe as demais).
+- [x] Documentar limitações por modelo.
 
 ## Fase 4 — Descoberta na rede
 

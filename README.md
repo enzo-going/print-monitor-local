@@ -16,7 +16,7 @@ pela **diferença entre leituras**.
 |------|-----------------------------------------------------------------|-------------|
 | 1    | Estrutura, banco, cadastro, coleta mockada, cálculo, relatório  | Disponível  |
 | 2    | Dashboard local, filtros, ranking, exportação CSV               | Disponível  |
-| 3    | Coleta SNMP real com fallback mockado                           | Planejada   |
+| 3    | Coleta SNMP real com fallback mockado                           | Disponível  |
 | 4    | Descoberta de impressoras na rede (abordagem segura)            | Planejada   |
 | 5    | Empacotamento Windows com PyInstaller                          | Planejada   |
 
@@ -55,8 +55,11 @@ python -m print_monitor add-printer --name "HP Andar 1" --ip 192.168.0.50 --loca
 # 3. Listar impressoras
 python -m print_monitor list-printers
 
-# 4. Coletar leitura (Fase 1: backend simulado)
+# 4. Coletar leitura (backend simulado por padrão)
 python -m print_monitor collect --all
+
+#    Coletar via SNMP real (community/timeout vêm do ambiente ou do .env)
+python -m print_monitor collect --all --backend snmp
 
 # 5. Relatório mensal (volume por impressora)
 python -m print_monitor report --year 2026 --month 6
@@ -78,6 +81,19 @@ Para popular o banco com dados **fictícios** e ver relatórios imediatamente:
 python scripts/seed.py
 python -m print_monitor report --year 2026 --month 6
 ```
+
+## Coleta SNMP
+
+A coleta real usa SNMP (v1/v2c) e é implementada em **Python puro** sobre a
+biblioteca padrão (sem dependências nativas), o que simplifica o empacotamento.
+Por padrão lê o OID `prtMarkerLifeCount` (Printer-MIB, RFC 3805). A *community
+string* e os tempos de espera vêm do ambiente ou do `.env` (ver `.env.example`),
+nunca do código.
+
+Impressoras incompatíveis ou inacessíveis são registradas como falha sem
+interromper a coleta das demais. O backend padrão é o simulado (`mock`); use
+`--backend snmp` (ou `PRINT_MONITOR_BACKEND=snmp`) para a coleta real. Limitações
+por fabricante/modelo: [`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
 
 ## Como o volume é calculado
 
