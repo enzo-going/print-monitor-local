@@ -26,6 +26,7 @@ impressão por período a partir das diferenças entre leituras.
 | `printers.py`  | Validação de IP e cadastro sem duplicidade.                  |
 | `collector.py` | Interface de backend, `MockBackend` e orquestração da coleta.|
 | `snmp.py`      | Backend SNMP real (Fase 3) e OIDs de contador total.        |
+| `discovery.py` | Descoberta segura de impressoras na rede (Fase 4).          |
 | `reports.py`   | Cálculo de volume por período/mês, filtros e ranking.        |
 | `exports.py`   | Serialização de relatórios para CSV.                        |
 | `web/`         | Dashboard local (Flask): rotas, templates e exportação CSV. |

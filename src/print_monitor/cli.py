@@ -16,6 +16,7 @@ import sys
 from .collector import Collector, make_backend
 from .config import load_config
 from .db import Database
+from .discovery import DEFAULT_PRINTER_PORTS, discover
 from .exports import report_to_csv
 from .printers import register_printer
 from .reports import monthly_report
@@ -161,6 +162,52 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discover(args: argparse.Namespace) -> int:
+    config = load_config()
+    try:
+        ports = tuple(int(p) for p in args.ports.split(",") if p.strip())
+    except ValueError:
+        print("Lista de portas invalida.", file=sys.stderr)
+        return 1
+    if not ports:
+        ports = DEFAULT_PRINTER_PORTS
+
+    try:
+        found = discover(
+            args.network,
+            ports=ports,
+            timeout=args.timeout,
+            workers=args.workers,
+            max_hosts=args.max_hosts,
+            snmp_confirm=args.snmp,
+            config=config,
+        )
+    except ValueError as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        return 1
+
+    if not found:
+        print("Nenhum host com portas de impressao encontrado.")
+        return 0
+
+    print(f"{'IP':<18} {'PORTAS':<16} {'CONTADOR SNMP'}")
+    for d in found:
+        ports_str = ",".join(str(p) for p in d.open_ports)
+        counter = d.snmp_counter if d.snmp_counter is not None else "-"
+        print(f"{d.ip:<18} {ports_str:<16} {counter}")
+
+    if args.register:
+        db = _open_db()
+        added = 0
+        for d in found:
+            if db.get_printer_by_ip(d.ip) is None:
+                register_printer(db, name=f"Impressora {d.ip}", ip=d.ip)
+                added += 1
+        db.close()
+        print(f"{added} impressora(s) cadastrada(s).")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         from .web import create_app
@@ -221,6 +268,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp.add_argument("--location", help="Filtra por local (parcial).")
     p_exp.add_argument("--output", help="Arquivo de saida (padrao: stdout).")
     p_exp.set_defaults(func=cmd_export)
+
+    p_disc = sub.add_parser(
+        "discover", help="Descobre impressoras na rede (abordagem segura)."
+    )
+    p_disc.add_argument("--network", required=True, help="Faixa CIDR (ex.: 192.168.0.0/24).")
+    p_disc.add_argument(
+        "--ports", default="9100,631,515", help="Portas TCP a verificar (CSV)."
+    )
+    p_disc.add_argument("--timeout", type=float, default=0.3, help="Timeout por porta (s).")
+    p_disc.add_argument("--workers", type=int, default=32, help="Conexoes simultaneas.")
+    p_disc.add_argument(
+        "--max-hosts", type=int, default=1024, help="Limite de hosts (seguranca)."
+    )
+    p_disc.add_argument(
+        "--snmp", action="store_true", help="Confirma via SNMP e le o contador."
+    )
+    p_disc.add_argument(
+        "--register", action="store_true", help="Cadastra os hosts encontrados."
+    )
+    p_disc.set_defaults(func=cmd_discover)
 
     p_srv = sub.add_parser("serve", help="Inicia o dashboard local (Flask).")
     p_srv.add_argument("--host", default="127.0.0.1", help="Host (padrao 127.0.0.1).")
