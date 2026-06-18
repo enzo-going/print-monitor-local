@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "print-monitor-local"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ferramenta local para monitorar impressoras de rede e contabilizar o volume de impressao ao longo do tempo."
 readme = "README.md"
 requires-python = ">=3.11"

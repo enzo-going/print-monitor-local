@@ -15,7 +15,7 @@ pela **diferença entre leituras**.
 | Fase | Conteúdo                                                        | Situação    |
 |------|-----------------------------------------------------------------|-------------|
 | 1    | Estrutura, banco, cadastro, coleta mockada, cálculo, relatório  | Disponível  |
-| 2    | Dashboard local, filtros, ranking, exportação CSV               | Planejada   |
+| 2    | Dashboard local, filtros, ranking, exportação CSV               | Disponível  |
 | 3    | Coleta SNMP real com fallback mockado                           | Planejada   |
 | 4    | Descoberta de impressoras na rede (abordagem segura)            | Planejada   |
 | 5    | Empacotamento Windows com PyInstaller                          | Planejada   |
@@ -60,7 +60,17 @@ python -m print_monitor collect --all
 
 # 5. Relatório mensal (volume por impressora)
 python -m print_monitor report --year 2026 --month 6
+
+# 6. Exportar o relatório mensal em CSV (filtros opcionais)
+python -m print_monitor export --year 2026 --month 6 --location Financeiro --output relatorio.csv
+
+# 7. Dashboard local (Flask) em http://127.0.0.1:5000
+python -m print_monitor serve
 ```
+
+> O dashboard exige o extra opcional `dashboard`: `pip install -e ".[dashboard]"`.
+> Ele oferece filtros por mês, impressora, IP e local, total mensal, ranking das
+> impressoras mais usadas e exportação CSV.
 
 Para popular o banco com dados **fictícios** e ver relatórios imediatamente:
 

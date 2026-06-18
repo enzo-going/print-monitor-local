@@ -79,6 +79,17 @@ def test_month_bounds_december():
     assert end < datetime(2027, 1, 1, tzinfo=timezone.utc)
 
 
+def test_month_bounds_rejects_out_of_range():
+    import pytest
+
+    with pytest.raises(ValueError):
+        month_bounds(2026, 13)
+    with pytest.raises(ValueError):
+        month_bounds(0, 6)
+    with pytest.raises(ValueError):
+        month_bounds(99999, 6)
+
+
 def test_monthly_report_and_ranking(db):
     a = db.add_printer(name="Alfa", ip="10.0.0.1", location="Financeiro")
     b = db.add_printer(name="Beta", ip="10.0.0.2", location="RH")

@@ -16,6 +16,7 @@ import sys
 from .collector import Collector, MockBackend
 from .config import load_config
 from .db import Database
+from .exports import report_to_csv
 from .printers import register_printer
 from .reports import monthly_report
 
@@ -104,18 +105,16 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
 def cmd_report(args: argparse.Namespace) -> int:
     db = _open_db()
-    report = monthly_report(db, args.year, args.month)
+    report = monthly_report(db, args.year, args.month, printer_id=args.printer_id)
     db.close()
 
     print(f"Relatorio mensal - {args.month:02d}/{args.year}")
     if not report:
-        print("Nenhuma impressora cadastrada.")
+        print("Nenhuma impressora para os filtros informados.")
         return 0
     print(f"{'IMPRESSORA':<24} {'IP':<16} {'LOCAL':<18} {'VOLUME':>8}")
     total = 0
     for pv in report:
-        if args.printer_id is not None and pv.printer_id != args.printer_id:
-            continue
         total += pv.volume
         print(
             f"{pv.name[:24]:<24} {pv.ip:<16} "
@@ -123,6 +122,47 @@ def cmd_report(args: argparse.Namespace) -> int:
         )
     print("-" * 68)
     print(f"{'TOTAL':<60} {total:>8}")
+    return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    db = _open_db()
+    report = monthly_report(
+        db,
+        args.year,
+        args.month,
+        printer_id=args.printer_id,
+        ip=args.ip,
+        location=args.location,
+    )
+    db.close()
+    csv_text = report_to_csv(report, args.year, args.month)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8", newline="") as fh:
+            fh.write(csv_text)
+        print(f"CSV gravado em: {args.output}")
+    else:
+        # Escreve os bytes diretamente para preservar os terminadores CRLF do CSV
+        # (evita que o modo texto do stdout no Windows os transforme em CR CR LF).
+        try:
+            sys.stdout.buffer.write(csv_text.encode("utf-8"))
+        except AttributeError:  # stdout sem buffer (ex.: capturado em teste)
+            sys.stdout.write(csv_text)
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        from .web import create_app
+    except ImportError:
+        print(
+            "Flask nao esta instalado. Instale com: pip install -e \".[dashboard]\"",
+            file=sys.stderr,
+        )
+        return 1
+    app = create_app()
+    print(f"Dashboard em http://{args.host}:{args.port}  (Ctrl+C para encerrar)")
+    app.run(host=args.host, port=args.port, debug=args.debug)
     return 0
 
 
@@ -157,6 +197,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_rep.add_argument("--month", type=int, required=True, help="Mes (1-12).")
     p_rep.add_argument("--printer-id", type=int, help="Filtra por impressora.")
     p_rep.set_defaults(func=cmd_report)
+
+    p_exp = sub.add_parser("export", help="Exporta o relatorio mensal em CSV.")
+    p_exp.add_argument("--year", type=int, required=True, help="Ano (ex.: 2026).")
+    p_exp.add_argument("--month", type=int, required=True, help="Mes (1-12).")
+    p_exp.add_argument("--printer-id", type=int, help="Filtra por impressora.")
+    p_exp.add_argument("--ip", help="Filtra por IP (parcial).")
+    p_exp.add_argument("--location", help="Filtra por local (parcial).")
+    p_exp.add_argument("--output", help="Arquivo de saida (padrao: stdout).")
+    p_exp.set_defaults(func=cmd_export)
+
+    p_srv = sub.add_parser("serve", help="Inicia o dashboard local (Flask).")
+    p_srv.add_argument("--host", default="127.0.0.1", help="Host (padrao 127.0.0.1).")
+    p_srv.add_argument("--port", type=int, default=5000, help="Porta (padrao 5000).")
+    p_srv.add_argument("--debug", action="store_true", help="Modo debug do Flask.")
+    p_srv.set_defaults(func=cmd_serve)
 
     return parser
 
