@@ -3,6 +3,17 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.7.0] — 2026-06-19
+
+### Adicionado
+
+- Importação de impressoras a partir de planilha CSV, na interface (upload na
+  página Impressoras) e na CLI (`import-printers --file`).
+- Mapeamento flexível de colunas (SETOR, MARCA, MODELO, IP, N° SÉRIE), tolerante
+  a acentos e ao separador `,` ou `;` (Excel pt-BR); IPs já cadastrados são
+  ignorados.
+- Exemplo fictício em `docs/exemplo-impressoras.csv` e testes da importação.
+
 ## [0.6.0] — 2026-06-18
 
 ### Adicionado

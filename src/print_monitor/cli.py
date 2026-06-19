@@ -18,6 +18,7 @@ from .config import load_config
 from .db import Database
 from .discovery import DEFAULT_PRINTER_PORTS, discover
 from .exports import report_to_csv
+from .imports import decode_bytes, import_printers_from_csv
 from .printers import register_printer
 from .reports import monthly_report
 
@@ -162,6 +163,25 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_printers(args: argparse.Namespace) -> int:
+    try:
+        with open(args.file, "rb") as fh:
+            text = decode_bytes(fh.read())
+    except OSError as exc:
+        print(f"Nao foi possivel ler o arquivo: {exc}", file=sys.stderr)
+        return 1
+    db = _open_db()
+    result = import_printers_from_csv(db, text)
+    db.close()
+    print(
+        f"Importadas: {result.added}; ja existentes: {result.skipped}; "
+        f"com erro: {len(result.errors)}"
+    )
+    for line_no, message in result.errors:
+        print(f"  linha {line_no}: {message}", file=sys.stderr)
+    return 0
+
+
 def cmd_discover(args: argparse.Namespace) -> int:
     config = load_config()
     try:
@@ -268,6 +288,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp.add_argument("--location", help="Filtra por local (parcial).")
     p_exp.add_argument("--output", help="Arquivo de saida (padrao: stdout).")
     p_exp.set_defaults(func=cmd_export)
+
+    p_imp = sub.add_parser(
+        "import-printers", help="Importa impressoras de um arquivo CSV."
+    )
+    p_imp.add_argument("--file", required=True, help="Caminho do CSV.")
+    p_imp.set_defaults(func=cmd_import_printers)
 
     p_disc = sub.add_parser(
         "discover", help="Descobre impressoras na rede (abordagem segura)."

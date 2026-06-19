@@ -52,6 +52,9 @@ python -m print_monitor init
 # 2. Cadastrar uma impressora por IP
 python -m print_monitor add-printer --name "HP Andar 1" --ip 192.168.0.50 --location "Financeiro"
 
+#    Ou importar várias de uma planilha CSV (colunas: SETOR, MARCA, MODELO, IP, N° SÉRIE)
+python -m print_monitor import-printers --file docs/exemplo-impressoras.csv
+
 # 3. Listar impressoras
 python -m print_monitor list-printers
 
