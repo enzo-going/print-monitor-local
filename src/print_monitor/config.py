@@ -1,9 +1,8 @@
 """Configuracao da aplicacao.
 
-Le parametros do ambiente (opcionalmente de um arquivo ``.env``) com valores
-padrao sensatos. O carregamento de ``.env`` e opcional: se ``python-dotenv`` nao
-estiver instalado, a aplicacao continua funcionando com variaveis de ambiente e
-padroes.
+Le parametros do ambiente (e de um arquivo ``.env`` ao lado da aplicacao) com
+valores padrao sensatos. O ``.env`` e interpretado por um parser proprio (sem
+dependencias externas), garantindo que funcione tambem no executavel empacotado.
 """
 
 from __future__ import annotations
@@ -29,15 +28,26 @@ def app_base_dir() -> Path:
     return PROJECT_ROOT
 
 
-def _load_dotenv_if_available() -> None:
-    """Carrega ``.env`` do diretorio base, se python-dotenv estiver presente."""
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
+def _load_dotenv() -> None:
+    """Carrega o ``.env`` do diretorio base no ambiente (parser proprio).
+
+    Formato simples ``CHAVE=VALOR`` por linha; linhas vazias e iniciadas por
+    ``#`` sao ignoradas. Variaveis ja definidas no ambiente tem precedencia.
+    """
     env_file = app_base_dir() / ".env"
-    if env_file.exists():
-        load_dotenv(env_file)
+    if not env_file.exists():
+        return
+    try:
+        content = env_file.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key.strip(), value)
 
 
 @dataclass(frozen=True)
@@ -54,7 +64,7 @@ class Config:
 
 def load_config() -> Config:
     """Resolve a configuracao a partir do ambiente e dos padroes."""
-    _load_dotenv_if_available()
+    _load_dotenv()
 
     base = app_base_dir()
     default_db_path = base / "data" / "print_monitor.db"
