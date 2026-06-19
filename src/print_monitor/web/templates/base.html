@@ -50,6 +50,12 @@
     .kpi { font-size: 30px; font-weight: 700; color: var(--accent); }
     .muted { color: var(--muted); }
     .empty { color: var(--muted); padding: 12px 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; }
+    .flash.ok { background: #064e3b; color: #d1fae5; border: 1px solid #10b981; }
+    .flash.erro { background: #4c1d1d; color: #fecaca; border: 1px solid #ef4444; }
+    button.danger { background: #ef4444; color: #fff; padding: 6px 12px; }
+    form.inline { display: inline; }
   </style>
 </head>
 <body>
@@ -58,9 +64,15 @@
     <nav>
       <a href="/">Dashboard</a>
       <a href="/printers">Impressoras</a>
+      <a href="/discover">Descobrir</a>
     </nav>
   </header>
   <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
     {% block content %}{% endblock %}
   </main>
 </body>

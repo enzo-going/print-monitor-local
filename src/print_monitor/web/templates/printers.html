@@ -3,11 +3,42 @@
 {% block content %}
 
 <section class="panel">
+  <h2>Cadastrar impressora</h2>
+  <form method="post" action="/printers/add">
+    <div class="grid">
+      <div>
+        <label for="name">Nome *</label>
+        <input type="text" id="name" name="name" required placeholder="HP Andar 1">
+      </div>
+      <div>
+        <label for="ip">IP *</label>
+        <input type="text" id="ip" name="ip" required placeholder="192.168.0.50">
+      </div>
+      <div>
+        <label for="location">Local/Setor</label>
+        <input type="text" id="location" name="location" placeholder="Financeiro">
+      </div>
+      <div>
+        <label for="model">Modelo</label>
+        <input type="text" id="model" name="model" placeholder="HP M404">
+      </div>
+      <div>
+        <label for="serial">Número de série</label>
+        <input type="text" id="serial" name="serial" placeholder="opcional">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <button type="submit">Cadastrar</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
   <h2>Impressoras cadastradas</h2>
   {% if printers %}
   <table>
     <thead>
-      <tr><th>ID</th><th>Nome</th><th>IP</th><th>Local</th><th>Modelo</th><th>Ativa</th></tr>
+      <tr><th>ID</th><th>Nome</th><th>IP</th><th>Local</th><th>Modelo</th><th>Ativa</th><th></th></tr>
     </thead>
     <tbody>
       {% for p in printers %}
@@ -18,12 +49,18 @@
         <td>{{ p.location or "-" }}</td>
         <td>{{ p.model or "-" }}</td>
         <td>{{ "Sim" if p.active else "Não" }}</td>
+        <td>
+          <form class="inline" method="post" action="/printers/{{ p.id }}/delete"
+                onsubmit="return confirm('Remover {{ p.name }} e suas leituras?');">
+            <button type="submit" class="danger">Remover</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty">Nenhuma impressora cadastrada. Use a CLI para cadastrar.</p>
+  <p class="empty">Nenhuma impressora cadastrada. Use o formulário acima.</p>
   {% endif %}
 </section>
 
