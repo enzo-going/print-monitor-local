@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "print-monitor-local"
-version = "0.7.1"
+version = "0.7.2"
 description = "Ferramenta local para monitorar impressoras de rede e contabilizar o volume de impressao ao longo do tempo."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,8 +16,6 @@ keywords = ["impressoras", "snmp", "monitoramento", "contadores", "sqlite"]
 dependencies = []
 
 [project.optional-dependencies]
-# Carregamento de .env (opcional; o codigo degrada graciosamente sem ele).
-env = ["python-dotenv>=1.0"]
 # Dashboard local (Fase 2).
 dashboard = ["flask>=3.0"]
 # Empacotamento Windows (Fase 5).

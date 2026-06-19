@@ -3,6 +3,19 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.7.2] — 2026-06-19
+
+### Corrigido
+
+- O arquivo `.env` passa a ser lido por um parser próprio (stdlib), sem depender
+  de `python-dotenv`. No executável empacotado, a biblioteca não era incluída e
+  o `.env` era ignorado — fazendo a coleta cair no backend `mock` em vez de
+  `snmp`. Agora `PRINT_MONITOR_BACKEND=snmp` é respeitado também no `.exe`.
+
+### Removido
+
+- Extra opcional `env` (`python-dotenv`): não é mais necessário.
+
 ## [0.7.1] — 2026-06-19
 
 ### Corrigido
