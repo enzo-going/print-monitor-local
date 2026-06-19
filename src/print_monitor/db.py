@@ -128,6 +128,12 @@ class Database:
         rows = self.conn.execute(query).fetchall()
         return [_row_to_printer(r) for r in rows]
 
+    def delete_printer(self, printer_id: int) -> bool:
+        """Remove uma impressora e suas leituras (cascade). Retorna se removeu."""
+        cur = self.conn.execute("DELETE FROM printers WHERE id = ?", (printer_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
     # -- leituras ----------------------------------------------------------
 
     def add_reading(

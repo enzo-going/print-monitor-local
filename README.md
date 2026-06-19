@@ -129,9 +129,11 @@ Para gerar um executável único (não requer Python instalado para rodar):
 .\build.ps1
 ```
 
-O resultado é `dist\print-monitor.exe` (aproximadamente 12 MB). O banco SQLite é
-criado em `data\print_monitor.db` **ao lado do executável**, fora dele. Sem
-argumentos (duplo clique), o `.exe` inicia o dashboard e abre o navegador.
+O banco SQLite é criado em `data\print_monitor.db` **ao lado do executável**,
+fora dele. Sem argumentos (duplo clique), o `.exe` abre o painel em uma **janela
+nativa** (pywebview/WebView2), sem navegador nem console — todas as ações
+(cadastrar/remover impressoras, coletar, descobrir, relatórios, filtros e
+exportação) são feitas pela interface. Com argumentos, funciona como CLI.
 Detalhes em [`docs/empacotamento.md`](docs/empacotamento.md).
 
 ## Testes

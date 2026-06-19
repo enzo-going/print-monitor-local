@@ -69,3 +69,105 @@ def test_filter_excludes_non_matching(app_client):
     body = resp.get_data(as_text=True)
     # Nenhuma impressora em "RH" -> Alfa nao aparece na tabela de detalhamento.
     assert "Nenhuma impressora atende" in body
+
+
+# -- acoes de gestao na interface -----------------------------------------
+
+
+@pytest.fixture()
+def client_and_db(tmp_path):
+    db_path = tmp_path / "web.db"
+    db = Database(db_path)
+    db.initialize()
+    db.close()
+    app = create_app(db_path=db_path)
+    app.config.update(TESTING=True)
+    return app.test_client(), db_path
+
+
+def test_add_printer_via_post(client_and_db):
+    client, db_path = client_and_db
+    resp = client.post(
+        "/printers/add",
+        data={"name": "Nova", "ip": "192.168.5.5", "location": "TI"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Nova" in resp.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.get_printer_by_ip("192.168.5.5") is not None
+    db.close()
+
+
+def test_add_printer_invalid_ip_flashes_error(client_and_db):
+    client, db_path = client_and_db
+    resp = client.post(
+        "/printers/add",
+        data={"name": "Ruim", "ip": "999.1.1.1"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "IP invalido" in resp.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.list_printers() == []
+    db.close()
+
+
+def test_delete_printer_via_post(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="ApagarMe", ip="192.168.5.9")
+    db.close()
+    resp = client.post(f"/printers/{pid}/delete", follow_redirects=True)
+    assert resp.status_code == 200
+    db = Database(db_path)
+    assert db.get_printer(pid) is None
+    db.close()
+
+
+def test_collect_mock_via_post(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    db.add_printer(name="Coletar", ip="192.168.5.10")
+    db.close()
+    resp = client.post("/collect", data={"backend": "mock"}, follow_redirects=True)
+    assert resp.status_code == 200
+    db = Database(db_path)
+    assert len(db.list_readings()) == 1
+    db.close()
+
+
+def test_discover_page_get(client_and_db):
+    client, _ = client_and_db
+    resp = client.get("/discover")
+    assert resp.status_code == 200
+    assert "Descobrir impressoras" in resp.get_data(as_text=True)
+
+
+def test_discover_post_empty(client_and_db):
+    import socket
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    free_port = s.getsockname()[1]
+    s.close()
+
+    client, _ = client_and_db
+    resp = client.post(
+        "/discover",
+        data={"network": "127.0.0.1/32", "ports": str(free_port)},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Nenhum host" in resp.get_data(as_text=True)
+
+
+def test_discover_post_rejects_large_range(client_and_db):
+    client, _ = client_and_db
+    resp = client.post(
+        "/discover",
+        data={"network": "10.0.0.0/16", "max_hosts": "1024"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Faixa muito grande" in resp.get_data(as_text=True)

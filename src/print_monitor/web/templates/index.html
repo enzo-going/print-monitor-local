@@ -3,6 +3,25 @@
 {% block content %}
 
 <section class="panel">
+  <h2>Coleta</h2>
+  <form class="filters" method="post" action="/collect">
+    <div>
+      <label for="backend">Backend</label>
+      <select id="backend" name="backend">
+        <option value="mock" {% if default_backend == 'mock' %}selected{% endif %}>mock (simulado)</option>
+        <option value="snmp" {% if default_backend == 'snmp' %}selected{% endif %}>snmp (real)</option>
+      </select>
+    </div>
+    <div>
+      <button type="submit">Coletar agora</button>
+    </div>
+    <div class="muted" style="align-self:center">
+      Registra uma leitura do contador de cada impressora ativa.
+    </div>
+  </form>
+</section>
+
+<section class="panel">
   <h2>Filtros</h2>
   <form class="filters" method="get" action="/">
     <div>
