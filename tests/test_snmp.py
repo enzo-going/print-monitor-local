@@ -34,21 +34,23 @@ def test_oid_encode_decode_roundtrip():
 
 def test_request_packet_is_parseable():
     packet = build_get_request("public", OID, request_id=42, version="2c")
-    error_status, varbinds = parse_response(packet)
+    request_id, error_status, varbinds = parse_response(packet)
+    assert request_id == 42
     assert error_status == 0
     assert varbinds and varbinds[0][0] == OID
 
 
 def test_response_roundtrip():
     packet = build_get_response("public", OID, 124500, request_id=7)
-    error_status, varbinds = parse_response(packet)
+    request_id, error_status, varbinds = parse_response(packet)
+    assert request_id == 7
     assert error_status == 0
     assert varbinds[0] == (OID, 124500)
 
 
 def test_response_with_error_status():
     packet = build_get_response("public", OID, 0, error_status=2)
-    error_status, _ = parse_response(packet)
+    _, error_status, _ = parse_response(packet)
     assert error_status == 2
 
 
@@ -59,7 +61,8 @@ def _start_udp_responder(value: int):
 
     def serve():
         data, addr = sock.recvfrom(65535)
-        sock.sendto(build_get_response("public", OID, value), addr)
+        req_id, _, _ = parse_response(data)  # ecoa o request-id da consulta
+        sock.sendto(build_get_response("public", OID, value, request_id=req_id), addr)
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
@@ -83,6 +86,24 @@ def test_snmp_get_timeout():
     try:
         with pytest.raises(SNMPTimeout):
             snmp_get("127.0.0.1", OID, port=port, timeout=0.3, retries=0)
+    finally:
+        sock.close()
+
+
+def test_snmp_get_ignores_wrong_request_id():
+    # Respondedor envia request-id ERRADO -> deve ser descartado e expirar.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+
+    def serve():
+        data, addr = sock.recvfrom(65535)
+        sock.sendto(build_get_response("public", OID, 123, request_id=999_999), addr)
+
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        with pytest.raises(SNMPTimeout):
+            snmp_get("127.0.0.1", OID, port=port, timeout=0.6, retries=0)
     finally:
         sock.close()
 
