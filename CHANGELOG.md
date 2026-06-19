@@ -3,6 +3,24 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.6.0] — 2026-06-18
+
+### Adicionado
+
+- Mini app de janela nativa: sem argumentos, o executável abre o painel em uma
+  janela própria (pywebview/WebView2), sem navegador nem console.
+- Ações de gestão na interface (sem linha de comando): cadastrar e remover
+  impressoras, coletar leituras (mock/snmp) e descobrir impressoras na rede.
+- Mensagens de status (flash) e nova página de descoberta no painel.
+- `db.delete_printer`; rotas POST `/printers/add`, `/printers/<id>/delete`,
+  `/collect` e `/discover` (GET/POST).
+- Testes das novas ações da interface (cadastro, remoção, coleta, descoberta).
+
+### Alterado
+
+- `build.ps1` empacota em modo janela (`--windowed`) e inclui o pywebview no
+  ambiente isolado de build.
+
 ## [0.5.0] — 2026-06-18
 
 ### Adicionado
