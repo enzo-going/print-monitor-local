@@ -3,6 +3,16 @@
 {% block content %}
 
 <section class="panel">
+  <h2>Importar de planilha (CSV)</h2>
+  <form method="post" action="/printers/import" enctype="multipart/form-data"
+        style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+    <input type="file" name="file" accept=".csv" required>
+    <button type="submit">Importar CSV</button>
+    <span class="muted">Colunas reconhecidas: SETOR, MARCA, MODELO, IP, N° SÉRIE (separador , ou ;). IPs já cadastrados são ignorados.</span>
+  </form>
+</section>
+
+<section class="panel">
   <h2>Cadastrar impressora</h2>
   <form method="post" action="/printers/add">
     <div class="grid">

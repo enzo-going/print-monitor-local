@@ -32,6 +32,7 @@ from ..config import load_config
 from ..db import Database
 from ..discovery import DEFAULT_PRINTER_PORTS, discover
 from ..exports import report_to_csv
+from ..imports import decode_bytes, import_printers_from_csv
 from ..printers import register_printer
 from ..reports import monthly_report
 
@@ -158,6 +159,25 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             flash(str(exc), "erro")
         finally:
             db.close()
+        return redirect(url_for("printers_view"))
+
+    @app.route("/printers/import", methods=["POST"])
+    def printers_import() -> Response:
+        file = request.files.get("file")
+        if not file or not file.filename:
+            flash("Selecione um arquivo CSV.", "erro")
+            return redirect(url_for("printers_view"))
+        text = decode_bytes(file.read())
+        db = open_db()
+        try:
+            result = import_printers_from_csv(db, text)
+        finally:
+            db.close()
+        flash(
+            f"Importadas: {result.added}; ja cadastradas: {result.skipped}; "
+            f"com erro: {len(result.errors)}.",
+            "ok" if not result.errors else "erro",
+        )
         return redirect(url_for("printers_view"))
 
     @app.route("/printers/<int:printer_id>/delete", methods=["POST"])
