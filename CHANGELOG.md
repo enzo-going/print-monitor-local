@@ -21,6 +21,11 @@ Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 - `build.ps1` empacota em modo janela (`--windowed`) e inclui o pywebview no
   ambiente isolado de build.
 
+### Corrigido
+
+- No executável de janela, o modo linha de comando passa a anexar ao console do
+  processo pai, garantindo a saída no terminal (`AttachConsole`).
+
 ## [0.5.0] — 2026-06-18
 
 ### Adicionado
