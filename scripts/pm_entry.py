@@ -51,6 +51,26 @@ def _wait_until_up(port: int, timeout: float = 20.0) -> bool:
     return False
 
 
+def _attach_parent_console() -> None:
+    """Anexa ao console do processo pai (modo CLI em executavel de janela).
+
+    Empacotado com ``--windowed``, o executavel nao tem console proprio, entao a
+    saida da CLI nao apareceria no terminal. Ao ser chamado a partir de um
+    terminal, este truque (Windows) anexa ao console pai e reabre stdout/stderr.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        attach_parent_process = -1
+        if ctypes.windll.kernel32.AttachConsole(attach_parent_process):
+            sys.stdout = open("CONOUT$", "w", buffering=1, encoding="utf-8")
+            sys.stderr = open("CONOUT$", "w", buffering=1, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _show_error(message: str) -> None:
     try:
         import ctypes
@@ -97,6 +117,7 @@ def run_app() -> int:
 def main() -> int:
     argv = sys.argv[1:]
     if argv:
+        _attach_parent_console()
         return cli_main(argv)
     try:
         return run_app()
