@@ -1,12 +1,13 @@
-"""Ponto de entrada do executavel empacotado (PyInstaller).
+"""Ponto de entrada do mini app empacotado (PyInstaller).
 
 Comportamento:
 - com argumentos: repassa para a CLI (``init``, ``collect``, ``report`` etc.);
-- sem argumentos (ex.: duplo clique no .exe): inicia o dashboard local e abre o
-  navegador, oferecendo uma experiencia pronta para uso.
+- sem argumentos (ex.: duplo clique no .exe): inicia o servico local e abre o
+  dashboard em uma JANELA NATIVA (pywebview/WebView2). Se o pywebview nao estiver
+  disponivel, abre no navegador padrao como alternativa.
 
-A importacao explicita de ``print_monitor.web`` garante que o dashboard seja
-incluido no empacotamento.
+Toda a operacao do app (cadastrar impressora, coletar, descobrir, relatorios,
+filtros e exportacao) e feita pela interface, sem linha de comando.
 """
 
 from __future__ import annotations
@@ -22,19 +23,88 @@ if _SRC.exists() and str(_SRC) not in sys.path:
 import print_monitor.web  # noqa: F401  (garante inclusao do dashboard no build)
 from print_monitor.cli import main as cli_main  # noqa: E402
 
+HOST = "127.0.0.1"
+WINDOW_TITLE = "print-monitor-local"
+
+
+def _free_port() -> int:
+    import socket
+
+    sock = socket.socket()
+    sock.bind((HOST, 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def _wait_until_up(port: int, timeout: float = 20.0) -> bool:
+    import socket
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((HOST, port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.15)
+    return False
+
+
+def _show_error(message: str) -> None:
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, message, WINDOW_TITLE, 0x10)
+    except Exception:
+        print(message, file=sys.stderr)
+
+
+def run_app() -> int:
+    import threading
+
+    from print_monitor.web import create_app
+
+    port = _free_port()
+    app = create_app()
+
+    def serve() -> None:
+        app.run(host=HOST, port=port, threaded=True, use_reloader=False)
+
+    threading.Thread(target=serve, daemon=True).start()
+    if not _wait_until_up(port):
+        _show_error("Nao foi possivel iniciar o servico local.")
+        return 1
+
+    url = f"http://{HOST}:{port}/"
+    try:
+        import webview
+    except ImportError:
+        # Alternativa: navegador padrao. Mantem o processo vivo.
+        import webbrowser
+
+        webbrowser.open(url)
+        threading.Event().wait()
+        return 0
+
+    webview.create_window(
+        WINDOW_TITLE, url, width=1180, height=820, min_size=(900, 600)
+    )
+    webview.start()
+    return 0
+
 
 def main() -> int:
     argv = sys.argv[1:]
     if argv:
         return cli_main(argv)
+    try:
+        return run_app()
+    except Exception as exc:  # janela sem console: erro precisa ser visivel
+        import traceback
 
-    # Sem argumentos: sobe o dashboard e abre o navegador.
-    import threading
-    import webbrowser
-
-    host, port = "127.0.0.1", 5000
-    threading.Timer(1.5, lambda: webbrowser.open(f"http://{host}:{port}")).start()
-    return cli_main(["serve", "--host", host, "--port", str(port)])
+        _show_error(f"Falha ao iniciar o aplicativo:\n{exc}\n\n{traceback.format_exc()}")
+        return 1
 
 
 if __name__ == "__main__":
