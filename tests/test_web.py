@@ -162,6 +162,27 @@ def test_discover_post_empty(client_and_db):
     assert "Nenhum host" in resp.get_data(as_text=True)
 
 
+def test_import_printers_via_upload(client_and_db):
+    import io
+
+    client, db_path = client_and_db
+    csv_bytes = (
+        "SETOR;MARCA;MODELO;IP;N° SÉRIE\n"
+        "FINANCEIRO;SAMSUNG;M4080FX;192.168.60.80;088WB07JC10PBTV\n"
+    ).encode("utf-8")
+    resp = client.post(
+        "/printers/import",
+        data={"file": (io.BytesIO(csv_bytes), "impressoras.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Importadas: 1" in resp.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.get_printer_by_ip("192.168.60.80") is not None
+    db.close()
+
+
 def test_discover_post_rejects_large_range(client_and_db):
     client, _ = client_and_db
     resp = client.post(
