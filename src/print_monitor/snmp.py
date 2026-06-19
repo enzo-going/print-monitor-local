@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import random
 import socket
+import time
 
 from .config import Config
 from .models import Printer
@@ -203,8 +204,8 @@ def _decode_varbind_value(tag: int, raw: bytes):
     return raw
 
 
-def parse_response(data: bytes) -> tuple[int, list[tuple[str, object]]]:
-    """Decodifica uma resposta SNMP em (error_status, lista de varbinds)."""
+def parse_response(data: bytes) -> tuple[int, int, list[tuple[str, object]]]:
+    """Decodifica uma resposta SNMP em (request_id, error_status, varbinds)."""
     tag, message, _ = _read_tlv(data, 0)
     if tag != _TAG_SEQUENCE:
         raise SNMPError("Mensagem SNMP invalida (sequencia esperada).")
@@ -215,10 +216,11 @@ def parse_response(data: bytes) -> tuple[int, list[tuple[str, object]]]:
     _, pdu, idx = _read_tlv(message, idx)
 
     pidx = 0
-    _, _request_id, pidx = _read_tlv(pdu, pidx)
+    _, request_id_raw, pidx = _read_tlv(pdu, pidx)
     _, error_raw, pidx = _read_tlv(pdu, pidx)
     _, _error_index, pidx = _read_tlv(pdu, pidx)
     _, varbind_list, pidx = _read_tlv(pdu, pidx)
+    request_id = int.from_bytes(request_id_raw, "big", signed=True)
     error_status = int.from_bytes(error_raw, "big", signed=True)
 
     varbinds: list[tuple[str, object]] = []
@@ -231,7 +233,7 @@ def parse_response(data: bytes) -> tuple[int, list[tuple[str, object]]]:
         varbinds.append(
             (_decode_oid(oid_raw), _decode_varbind_value(value_tag, value_raw))
         )
-    return error_status, varbinds
+    return request_id, error_status, varbinds
 
 
 def build_get_response(
@@ -281,29 +283,50 @@ def snmp_get(
     packet = build_get_request(community, oid, request_id, version)
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.settimeout(timeout)
         for _ in range(max(1, retries + 1)):
             try:
                 sock.sendto(packet, (host, port))
-                data, _addr = sock.recvfrom(65535)
-            except socket.timeout:
-                continue
             except OSError as exc:
                 raise SNMPError(f"Erro de rede ao consultar {host}: {exc}") from exc
 
-            error_status, varbinds = parse_response(data)
-            if error_status != 0:
-                raise SNMPError(
-                    f"Agente retornou erro SNMP {error_status} para {oid}."
-                )
-            if not varbinds:
-                raise SNMPError("Resposta SNMP sem varbinds.")
-            _, value = varbinds[0]
-            if value is None:
-                raise SNMPError(f"OID nao suportado pela impressora: {oid}.")
-            if not isinstance(value, int):
-                raise SNMPError(f"Valor nao numerico retornado para {oid}.")
-            return value
+            # Aguarda a resposta CORRETA: mesmo request-id e mesma origem.
+            # Pacotes tardios/duplicados de outras consultas sao descartados,
+            # evitando leituras trocadas em coletas sequenciais rapidas.
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                sock.settimeout(remaining)
+                try:
+                    data, addr = sock.recvfrom(65535)
+                except socket.timeout:
+                    break
+                except OSError as exc:
+                    raise SNMPError(
+                        f"Erro de rede ao consultar {host}: {exc}"
+                    ) from exc
+                if addr[0] != host:
+                    continue  # resposta de outra origem
+                try:
+                    resp_id, error_status, varbinds = parse_response(data)
+                except (SNMPError, IndexError, ValueError):
+                    continue  # pacote malformado/estranho
+                if resp_id != request_id:
+                    continue  # resposta de uma consulta anterior
+
+                if error_status != 0:
+                    raise SNMPError(
+                        f"Agente retornou erro SNMP {error_status} para {oid}."
+                    )
+                if not varbinds:
+                    raise SNMPError("Resposta SNMP sem varbinds.")
+                _, value = varbinds[0]
+                if value is None:
+                    raise SNMPError(f"OID nao suportado pela impressora: {oid}.")
+                if not isinstance(value, int):
+                    raise SNMPError(f"Valor nao numerico retornado para {oid}.")
+                return value
 
     raise SNMPTimeout(f"Sem resposta de {host}:{port} para {oid}.")
 

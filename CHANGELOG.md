@@ -3,6 +3,16 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.7.1] — 2026-06-19
+
+### Corrigido
+
+- **SNMP**: `snmp_get` passa a validar o *request-id* e o IP de origem da
+  resposta, descartando pacotes tardios/duplicados. Sem isso, coletas
+  sequenciais rápidas (`collect --all`) podiam atribuir a leitura de uma
+  impressora a outra — ou gerar números para impressoras que não responderam.
+  Validado contra impressoras reais (leituras consistentes entre coletas).
+
 ## [0.7.0] — 2026-06-19
 
 ### Adicionado
