@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "print-monitor-local"
-version = "0.7.2"
+version = "1.0.0"
 description = "Ferramenta local para monitorar impressoras de rede e contabilizar o volume de impressao ao longo do tempo."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 authors = [{ name = "enzo-going" }]
 keywords = ["impressoras", "snmp", "monitoramento", "contadores", "sqlite"]
 

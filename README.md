@@ -1,5 +1,10 @@
 # print-monitor-local
 
+[![CI](https://github.com/enzo-going/print-monitor-local/actions/workflows/ci.yml/badge.svg)](https://github.com/enzo-going/print-monitor-local/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/enzo-going/print-monitor-local)](https://github.com/enzo-going/print-monitor-local/releases)
+
 Ferramenta **local** para monitorar impressoras de rede, identificá-las por IP
 e contabilizar o volume de impressão ao longo do tempo.
 
