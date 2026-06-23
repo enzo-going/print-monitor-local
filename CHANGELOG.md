@@ -3,6 +3,23 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.0.0] — 2026-06-23
+
+Primeira versão pública. As cinco fases do roadmap (base, dashboard, coleta SNMP,
+descoberta e empacotamento Windows) estão disponíveis.
+
+### Adicionado
+
+- Integração contínua (GitHub Actions): a suíte de testes roda automaticamente em
+  Python 3.11, 3.12 e 3.13 a cada push e pull request na `main`.
+- Distribuição do executável Windows (`print-monitor.exe`) pela página de
+  Releases.
+- Badges de CI, versão de Python, licença e release no README.
+
+### Alterado
+
+- Licença alterada para MIT (antes restrita a uso interno).
+
 ## [0.7.2] — 2026-06-19
 
 ### Corrigido
