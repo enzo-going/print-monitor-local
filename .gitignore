@@ -56,3 +56,6 @@ desktop.ini
 
 # Exportações geradas localmente (relatórios CSV)
 exports/
+
+# Banco temporário para gerar capturas de tela da documentação
+.demo/

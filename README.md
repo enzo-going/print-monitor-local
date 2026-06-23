@@ -15,6 +15,18 @@ pela **diferença entre leituras**.
 
 > Exemplo: contador `120000` em 01/06 e `124500` em 30/06 → **4500 impressões**.
 
+![Dashboard do print-monitor-local com total mensal, ranking e filtros](docs/assets/dashboard.png)
+
+<sub>Dashboard local com dados fictícios de demonstração.</sub>
+
+> **In English** — Local tool to monitor network printers and measure print
+> volume over time. Printers expose a **cumulative** page counter, not a monthly
+> total, so the tool stores periodic readings in SQLite and computes each
+> period's volume as the **difference between consecutive readings** (handling
+> counter rollover). It reads counters over **SNMP** (pure Python, no native
+> deps), ships a local **Flask** dashboard with filters/ranking/CSV export, does
+> safe subnet **discovery**, and is packaged as a single **Windows .exe**.
+
 ## Status
 
 | Fase | Conteúdo                                                        | Situação    |
@@ -105,6 +117,30 @@ Impressoras incompatíveis ou inacessíveis são registradas como falha sem
 interromper a coleta das demais. O backend padrão é o simulado (`mock`); use
 `--backend snmp` (ou `PRINT_MONITOR_BACKEND=snmp`) para a coleta real. Limitações
 por fabricante/modelo: [`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
+
+## Coleta agendada (Windows)
+
+Como o volume é a diferença entre leituras, é preciso coletar periodicamente —
+sem isso o histórico não acumula e os relatórios ficam em zero. O script
+[`scripts/agendar-coleta.ps1`](scripts/agendar-coleta.ps1) registra uma tarefa
+diária no Agendador do Windows que executa `print-monitor.exe collect --all`:
+
+```powershell
+# Coleta diária às 08:00 (usa o executável em dist\)
+.\scripts\agendar-coleta.ps1
+
+# Horário e caminho do executável personalizados
+.\scripts\agendar-coleta.ps1 -ExePath "C:\PrintMonitor\print-monitor.exe" -Time "07:30"
+```
+
+A tarefa roda com o diretório de trabalho na pasta do executável, para que o
+`.env` e o banco (`data\print_monitor.db`) sejam resolvidos ao seu lado. Para
+conferir ou remover:
+
+```powershell
+Get-ScheduledTask -TaskName "PrintMonitor-Coleta"
+Unregister-ScheduledTask -TaskName "PrintMonitor-Coleta" -Confirm:$false
+```
 
 ## Como o volume é calculado
 
