@@ -126,7 +126,11 @@ data/                banco SQLite local (ignorado pelo Git)
 
 ## Executável Windows (.exe)
 
-Para gerar um executável único (não requer Python instalado para rodar):
+Há um executável pronto na página de
+[**Releases**](https://github.com/enzo-going/print-monitor-local/releases)
+(não requer Python instalado). Basta baixar e executar.
+
+Para gerar o executável a partir do código-fonte:
 
 ```powershell
 .\build.ps1
