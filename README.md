@@ -156,4 +156,4 @@ Copie `.env.example` para `.env` e ajuste os valores. O `.env` e o banco em
 
 ## Licença
 
-Uso interno / proprietário.
+Distribuído sob a licença [MIT](LICENSE).
