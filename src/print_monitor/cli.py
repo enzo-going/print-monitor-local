@@ -84,7 +84,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
     print(f"Backend de coleta: {source}")
 
     if args.all:
-        outcome = collector.collect_all()
+        outcome = collector.collect_all(workers=args.workers or config.collection_workers)
         if not outcome.readings and not outcome.failures:
             print("Nenhuma impressora ativa para coletar.")
         for r in outcome.readings:
@@ -128,10 +128,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     total = 0
     for pv in report:
         total += pv.volume
-        print(
-            f"{pv.name[:24]:<24} {pv.ip:<16} "
-            f"{(pv.location or '-')[:18]:<18} {pv.volume:>8}"
-        )
+        print(f"{pv.name[:24]:<24} {pv.ip:<16} {(pv.location or '-')[:18]:<18} {pv.volume:>8}")
     print("-" * 68)
     print(f"{'TOTAL':<60} {total:>8}")
     return 0
@@ -233,7 +230,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         from .web import create_app
     except ImportError:
         print(
-            "Flask nao esta instalado. Instale com: pip install -e \".[dashboard]\"",
+            'Flask nao esta instalado. Instale com: pip install -e ".[dashboard]"',
             file=sys.stderr,
         )
         return 1
@@ -260,9 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--serial", help="Numero de serie.")
     p_add.set_defaults(func=cmd_add_printer)
 
-    sub.add_parser("list-printers", help="Lista impressoras.").set_defaults(
-        func=cmd_list_printers
-    )
+    sub.add_parser("list-printers", help="Lista impressoras.").set_defaults(func=cmd_list_printers)
 
     p_col = sub.add_parser("collect", help="Coleta leituras (backend mock ou snmp).")
     p_col.add_argument("--printer-id", type=int, help="Id da impressora.")
@@ -271,6 +266,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         choices=["mock", "snmp"],
         help="Sobrescreve o backend de coleta (padrao: do ambiente).",
+    )
+    p_col.add_argument(
+        "--workers",
+        type=int,
+        choices=range(1, 129),
+        metavar="1-128",
+        help="Consultas simultaneas (padrao: PRINT_MONITOR_WORKERS ou 8).",
     )
     p_col.set_defaults(func=cmd_collect)
 
@@ -289,30 +291,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp.add_argument("--output", help="Arquivo de saida (padrao: stdout).")
     p_exp.set_defaults(func=cmd_export)
 
-    p_imp = sub.add_parser(
-        "import-printers", help="Importa impressoras de um arquivo CSV."
-    )
+    p_imp = sub.add_parser("import-printers", help="Importa impressoras de um arquivo CSV.")
     p_imp.add_argument("--file", required=True, help="Caminho do CSV.")
     p_imp.set_defaults(func=cmd_import_printers)
 
-    p_disc = sub.add_parser(
-        "discover", help="Descobre impressoras na rede (abordagem segura)."
-    )
+    p_disc = sub.add_parser("discover", help="Descobre impressoras na rede (abordagem segura).")
     p_disc.add_argument("--network", required=True, help="Faixa CIDR (ex.: 192.168.0.0/24).")
-    p_disc.add_argument(
-        "--ports", default="9100,631,515", help="Portas TCP a verificar (CSV)."
-    )
+    p_disc.add_argument("--ports", default="9100,631,515", help="Portas TCP a verificar (CSV).")
     p_disc.add_argument("--timeout", type=float, default=0.3, help="Timeout por porta (s).")
     p_disc.add_argument("--workers", type=int, default=32, help="Conexoes simultaneas.")
-    p_disc.add_argument(
-        "--max-hosts", type=int, default=1024, help="Limite de hosts (seguranca)."
-    )
-    p_disc.add_argument(
-        "--snmp", action="store_true", help="Confirma via SNMP e le o contador."
-    )
-    p_disc.add_argument(
-        "--register", action="store_true", help="Cadastra os hosts encontrados."
-    )
+    p_disc.add_argument("--max-hosts", type=int, default=1024, help="Limite de hosts (seguranca).")
+    p_disc.add_argument("--snmp", action="store_true", help="Confirma via SNMP e le o contador.")
+    p_disc.add_argument("--register", action="store_true", help="Cadastra os hosts encontrados.")
     p_disc.set_defaults(func=cmd_discover)
 
     p_srv = sub.add_parser("serve", help="Inicia o dashboard local (Flask).")
@@ -327,7 +317,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except ValueError as exc:
+        print(f"Erro de configuracao: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

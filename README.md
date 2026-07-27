@@ -114,9 +114,13 @@ string* e os tempos de espera vêm do ambiente ou do `.env` (ver `.env.example`)
 nunca do código.
 
 Impressoras incompatíveis ou inacessíveis são registradas como falha sem
-interromper a coleta das demais. O backend padrão é o simulado (`mock`); use
-`--backend snmp` (ou `PRINT_MONITOR_BACKEND=snmp`) para a coleta real. Limitações
-por fabricante/modelo: [`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
+interromper a coleta das demais. As consultas rodam em paralelo (8 por padrão)
+e as leituras bem-sucedidas são gravadas em uma única transação. Ajuste a
+concorrência com `PRINT_MONITOR_WORKERS` ou `collect --workers`. O backend padrão
+é o simulado (`mock`); use `--backend snmp` (ou
+`PRINT_MONITOR_BACKEND=snmp`) para a coleta real. Limitações por
+fabricante/modelo:
+[`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
 
 ## Coleta agendada (Windows)
 
@@ -187,6 +191,7 @@ Detalhes em [`docs/empacotamento.md`](docs/empacotamento.md).
 ## Testes
 
 ```powershell
+ruff check src tests scripts
 python -m pytest
 ```
 
@@ -194,6 +199,9 @@ python -m pytest
 
 Copie `.env.example` para `.env` e ajuste os valores. O `.env` e o banco em
 `data/` não são versionados. Nenhuma credencial é armazenada no repositório.
+O painel inclui proteção CSRF e cabeçalhos de segurança, mas continua sendo uma
+ferramenta local: mantenha o host padrão `127.0.0.1` e não o exponha diretamente
+à internet.
 
 ## Licença
 

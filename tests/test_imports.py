@@ -10,10 +10,7 @@ CSV_PONTO_VIRGULA = (
     "COMPRAS;HP;HP E52645;192.168.70.210;BRBSP740K9\n"
 )
 
-CSV_VIRGULA = (
-    "NOME,IP,LOCAL\n"
-    "Recepcao,10.0.0.5,Entrada\n"
-)
+CSV_VIRGULA = "NOME,IP,LOCAL\nRecepcao,10.0.0.5,Entrada\n"
 
 
 def test_import_semicolon_with_accented_headers(db):

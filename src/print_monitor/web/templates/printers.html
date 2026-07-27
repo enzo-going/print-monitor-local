@@ -6,6 +6,7 @@
   <h2>Importar de planilha (CSV)</h2>
   <form method="post" action="/printers/import" enctype="multipart/form-data"
         style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="file" name="file" accept=".csv" required>
     <button type="submit">Importar CSV</button>
     <span class="muted">Colunas reconhecidas: SETOR, MARCA, MODELO, IP, N° SÉRIE (separador , ou ;). IPs já cadastrados são ignorados.</span>
@@ -15,6 +16,7 @@
 <section class="panel">
   <h2>Cadastrar impressora</h2>
   <form method="post" action="/printers/add">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="grid">
       <div>
         <label for="name">Nome *</label>
@@ -60,8 +62,8 @@
         <td>{{ p.model or "-" }}</td>
         <td>{{ "Sim" if p.active else "Não" }}</td>
         <td>
-          <form class="inline" method="post" action="/printers/{{ p.id }}/delete"
-                onsubmit="return confirm('Remover {{ p.name }} e suas leituras?');">
+          <form class="inline" method="post" action="/printers/{{ p.id }}/delete">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="danger">Remover</button>
           </form>
         </td>

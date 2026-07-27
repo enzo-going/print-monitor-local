@@ -3,6 +3,31 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Adicionado
+
+- Coleta em lote concorrente, configurável por `PRINT_MONITOR_WORKERS` ou
+  `collect --workers`, mantendo a gravação SQLite em uma única transação.
+- Proteção CSRF, limite de upload e cabeçalhos de segurança no dashboard local.
+- Ruff na suíte de desenvolvimento e no GitHub Actions.
+- Validação de limites de descoberta e testes para pacotes SNMP malformados.
+
+### Alterado
+
+- Relatórios mensais passam a carregar as leituras do período em uma consulta,
+  eliminando o padrão N+1 para parques com muitas impressoras.
+- SQLite passa a usar WAL, espera por bloqueios e índice por período para
+  permitir leitura do dashboard durante coletas.
+- Configurações numéricas do ambiente agora aceitam timeout decimal e produzem
+  erros claros para valores inválidos.
+
+### Corrigido
+
+- O timestamp devolvido por uma coleta individual agora é exatamente o mesmo
+  persistido no banco.
+- O parser BER/SNMP agora rejeita mensagens truncadas de forma controlada.
+
 ## [1.0.0] — 2026-06-23
 
 Primeira versão pública. As cinco fases do roadmap (base, dashboard, coleta SNMP,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -10,7 +10,7 @@ from print_monitor.db import Database
 
 pytest.importorskip("flask")
 
-from print_monitor.web import create_app  # noqa: E402
+from print_monitor.web import create_app
 
 
 @pytest.fixture()
@@ -19,12 +19,12 @@ def app_client(tmp_path):
     db = Database(db_path)
     db.initialize()
     pid = db.add_printer(name="Alfa", ip="192.168.10.21", location="Financeiro")
-    db.add_reading(pid, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=timezone.utc))
-    db.add_reading(pid, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=timezone.utc))
+    db.add_reading(pid, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=UTC))
+    db.add_reading(pid, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
     db.close()
 
     app = create_app(db_path=db_path)
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
     return app.test_client()
 
 
@@ -81,7 +81,7 @@ def client_and_db(tmp_path):
     db.initialize()
     db.close()
     app = create_app(db_path=db_path)
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
     return app.test_client(), db_path
 
 
@@ -167,9 +167,8 @@ def test_import_printers_via_upload(client_and_db):
 
     client, db_path = client_and_db
     csv_bytes = (
-        "SETOR;MARCA;MODELO;IP;N° SÉRIE\n"
-        "FINANCEIRO;SAMSUNG;M4080FX;192.168.60.80;088WB07JC10PBTV\n"
-    ).encode("utf-8")
+        "SETOR;MARCA;MODELO;IP;N° SÉRIE\nFINANCEIRO;SAMSUNG;M4080FX;192.168.60.80;088WB07JC10PBTV\n"
+    ).encode()
     resp = client.post(
         "/printers/import",
         data={"file": (io.BytesIO(csv_bytes), "impressoras.csv")},
@@ -192,3 +191,27 @@ def test_discover_post_rejects_large_range(client_and_db):
     )
     assert resp.status_code == 200
     assert "Faixa muito grande" in resp.get_data(as_text=True)
+
+
+def test_post_requires_valid_csrf_token(tmp_path):
+    app = create_app(db_path=tmp_path / "csrf.db")
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    assert client.post("/collect", data={"backend": "mock"}).status_code == 400
+
+    client.get("/")
+    with client.session_transaction() as sess:
+        token = sess["_csrf_token"]
+    response = client.post(
+        "/collect",
+        data={"backend": "mock", "_csrf_token": token},
+    )
+    assert response.status_code == 302
+
+
+def test_security_headers_are_present(app_client):
+    response = app_client.get("/")
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]

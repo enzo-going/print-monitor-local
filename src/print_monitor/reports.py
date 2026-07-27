@@ -11,8 +11,10 @@ torna faceis de testar isoladamente da persistencia.
 from __future__ import annotations
 
 import calendar
+from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 from .db import Database
 from .models import Printer, Reading
@@ -28,29 +30,25 @@ def month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
         raise ValueError("Mes deve estar entre 1 e 12.")
     if not 1 <= year <= 9999:
         raise ValueError("Ano fora do intervalo suportado (1-9999).")
-    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    start = datetime(year, month, 1, tzinfo=UTC)
     last_day = calendar.monthrange(year, month)[1]
-    end = datetime(year, month, last_day, tzinfo=timezone.utc) + timedelta(
-        days=1
-    ) - timedelta(microseconds=1)
+    end = (
+        datetime(year, month, last_day, tzinfo=UTC) + timedelta(days=1) - timedelta(microseconds=1)
+    )
     return start, end
 
 
-def period_volume(
-    readings: list[Reading], start: datetime, end: datetime
-) -> int:
+def period_volume(readings: list[Reading], start: datetime, end: datetime) -> int:
     """Volume de impressao no intervalo [start, end] (inclusivo).
 
     Soma as diferencas positivas entre leituras consecutivas ordenadas por
     tempo. Com 0 ou 1 leitura no intervalo, o volume e 0.
     """
     points = sorted(
-        (r.collected_at, r.total_counter)
-        for r in readings
-        if start <= r.collected_at <= end
+        (r.collected_at, r.total_counter) for r in readings if start <= r.collected_at <= end
     )
     total = 0
-    for (_, c0), (_, c1) in zip(points, points[1:]):
+    for (_, c0), (_, c1) in pairwise(points):
         delta = c1 - c0
         if delta > 0:
             total += delta
@@ -114,13 +112,19 @@ def monthly_report(
     houver leituras suficientes no mes). Sem filtros, considera todas.
     """
     start, end = month_bounds(year, month)
-    printers = filter_printers(
-        db.list_printers(), printer_id=printer_id, ip=ip, location=location
-    )
+    printers = filter_printers(db.list_printers(), printer_id=printer_id, ip=ip, location=location)
+    printer_ids = {printer.id for printer in printers if printer.id is not None}
+    readings_by_printer: dict[int, list[Reading]] = defaultdict(list)
+    if printer_ids:
+        # Uma unica consulta substitui o antigo padrao N+1 (uma por impressora).
+        for reading in db.list_readings(start=start, end=end):
+            if reading.printer_id in printer_ids:
+                readings_by_printer[reading.printer_id].append(reading)
+
     result: list[PrinterVolume] = []
     for printer in printers:
         assert printer.id is not None
-        readings = db.list_readings(printer_id=printer.id, start=start, end=end)
+        readings = readings_by_printer[printer.id]
         result.append(
             PrinterVolume(
                 printer_id=printer.id,
@@ -146,9 +150,7 @@ def ranking(
     """Ranking das impressoras mais usadas no mes (atalho sobre o relatorio)."""
     report = [
         pv
-        for pv in monthly_report(
-            db, year, month, printer_id=printer_id, ip=ip, location=location
-        )
+        for pv in monthly_report(db, year, month, printer_id=printer_id, ip=ip, location=location)
         if pv.volume > 0
     ]
     return report[:limit] if limit else report

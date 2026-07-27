@@ -5,6 +5,7 @@
 <section class="panel">
   <h2>Descobrir impressoras na rede</h2>
   <form method="post" action="/discover">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="grid">
       <div>
         <label for="network">Faixa (CIDR) *</label>

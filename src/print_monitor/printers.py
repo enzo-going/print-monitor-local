@@ -50,9 +50,7 @@ def register_printer(
     model = model.strip() if model else None
     serial = serial.strip() if serial else None
 
-    printer_id = db.add_printer(
-        name=name, ip=ip, location=location, model=model, serial=serial
-    )
+    printer_id = db.add_printer(name=name, ip=ip, location=location, model=model, serial=serial)
     printer = db.get_printer(printer_id)
     assert printer is not None  # acabou de ser inserida
     return printer

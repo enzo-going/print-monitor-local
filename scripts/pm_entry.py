@@ -20,7 +20,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-import print_monitor.web  # noqa: F401  (garante inclusao do dashboard no build)
+import print_monitor.web  # noqa: E402,F401  (garante inclusao do dashboard no build)
 from print_monitor.cli import main as cli_main  # noqa: E402
 
 HOST = "127.0.0.1"
@@ -107,9 +107,7 @@ def run_app() -> int:
         threading.Event().wait()
         return 0
 
-    webview.create_window(
-        WINDOW_TITLE, url, width=1180, height=820, min_size=(900, 600)
-    )
+    webview.create_window(WINDOW_TITLE, url, width=1180, height=820, min_size=(900, 600))
     webview.start()
     return 0
 
