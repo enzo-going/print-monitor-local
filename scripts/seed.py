@@ -12,7 +12,7 @@ NAO usa dados reais. Execute com:
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Garante que "src/" esteja no path quando executado diretamente.
@@ -27,8 +27,18 @@ from print_monitor.printers import register_printer  # noqa: E402
 
 # Impressoras ficticias (IPs de redes privadas, sem qualquer dado real).
 SAMPLE_PRINTERS = [
-    {"name": "HP LaserJet - Recepcao", "ip": "192.168.10.21", "location": "Recepcao", "model": "HP M404"},
-    {"name": "Brother - Financeiro", "ip": "192.168.10.22", "location": "Financeiro", "model": "Brother L2540"},
+    {
+        "name": "HP LaserJet - Recepcao",
+        "ip": "192.168.10.21",
+        "location": "Recepcao",
+        "model": "HP M404",
+    },
+    {
+        "name": "Brother - Financeiro",
+        "ip": "192.168.10.22",
+        "location": "Financeiro",
+        "model": "Brother L2540",
+    },
     {"name": "Xerox - TI", "ip": "192.168.10.23", "location": "TI", "model": "Xerox B210"},
     {"name": "Epson - RH", "ip": "192.168.10.24", "location": "RH", "model": "Epson L3250"},
 ]
@@ -38,9 +48,9 @@ SAMPLE_MONTHS = [(2026, 4), (2026, 5), (2026, 6)]
 
 
 def _month_edges(year: int, month: int) -> tuple[datetime, datetime]:
-    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    start = datetime(year, month, 1, tzinfo=UTC)
     # Dia 28 existe em todos os meses; suficiente para uma leitura de "fim".
-    end = datetime(year, month, 28, tzinfo=timezone.utc)
+    end = datetime(year, month, 28, tzinfo=UTC)
     return start, end
 
 
@@ -67,9 +77,7 @@ def main() -> int:
         for year, month in SAMPLE_MONTHS:
             for moment in _month_edges(year, month):
                 counter = MockBackend(at=moment).read_total_counter(printer)
-                db.add_reading(
-                    printer.id, counter, collected_at=moment, source="seed"
-                )
+                db.add_reading(printer.id, counter, collected_at=moment, source="seed")
                 readings += 1
 
     db.close()

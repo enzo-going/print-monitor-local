@@ -11,8 +11,9 @@ interface, podendo substituir o mock sem alterar o restante do codigo.
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Protocol
 
 from .config import Config
@@ -26,8 +27,7 @@ _SIM_EPOCH = date(2024, 1, 1)
 class CounterBackend(Protocol):
     """Contrato de um backend capaz de ler o contador total de uma impressora."""
 
-    def read_total_counter(self, printer: Printer) -> int:
-        ...
+    def read_total_counter(self, printer: Printer) -> int: ...
 
 
 def _stable_seed(ip: str) -> int:
@@ -47,7 +47,7 @@ def simulated_counter(ip: str, at: datetime | None = None) -> int:
     seed = _stable_seed(ip)
     base = 100_000 + (seed % 5_000)
     daily_rate = 80 + (seed % 220)  # entre 80 e ~300 paginas/dia
-    days = max(0, (at.astimezone(timezone.utc).date() - _SIM_EPOCH).days)
+    days = max(0, (at.astimezone(UTC).date() - _SIM_EPOCH).days)
     return base + days * daily_rate
 
 
@@ -74,33 +74,72 @@ class Collector:
         """Coleta o contador de uma impressora e grava a leitura."""
         if printer.id is None:
             raise ValueError("Impressora sem id; cadastre-a antes de coletar.")
+        collected_at = at or utcnow()
         counter = self.backend.read_total_counter(printer)
         reading_id = self.db.add_reading(
             printer_id=printer.id,
             total_counter=counter,
-            collected_at=at,
+            collected_at=collected_at,
             source=self.source,
         )
         return Reading(
             id=reading_id,
             printer_id=printer.id,
             total_counter=counter,
-            collected_at=at or utcnow(),
+            collected_at=collected_at,
             source=self.source,
         )
 
-    def collect_all(self, at: datetime | None = None) -> "CollectionOutcome":
+    def collect_all(
+        self,
+        at: datetime | None = None,
+        workers: int = 8,
+    ) -> CollectionOutcome:
         """Coleta o contador de todas as impressoras ativas.
 
         Uma falha em uma impressora (ex.: incompativel ou inacessivel via SNMP)
         nao interrompe a coleta das demais: o erro e registrado em ``failures``.
+        As consultas de rede rodam em paralelo; a gravacao SQLite continua
+        sequencial e e confirmada em uma unica transacao.
         """
         outcome = CollectionOutcome()
-        for printer in self.db.list_printers(only_active=True):
-            try:
-                outcome.readings.append(self.collect(printer, at=at))
-            except Exception as exc:  # backend pode lancar erros variados (SNMP, rede)
-                outcome.failures.append((printer, str(exc)))
+        printers = self.db.list_printers(only_active=True)
+        if not printers:
+            return outcome
+
+        collected_at = at or utcnow()
+        successful: list[tuple[Printer, int]] = []
+        max_workers = min(max(1, workers), len(printers))
+        with ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="print-monitor",
+        ) as executor:
+            futures = [
+                executor.submit(self.backend.read_total_counter, printer) for printer in printers
+            ]
+            for printer, future in zip(printers, futures, strict=True):
+                try:
+                    successful.append((printer, future.result()))
+                except Exception as exc:  # backends podem expor falhas variadas
+                    outcome.failures.append((printer, str(exc)))
+
+        rows = [
+            (printer.id, counter, collected_at, self.source)
+            for printer, counter in successful
+            if printer.id is not None
+        ]
+        ids = self.db.add_readings(rows)
+        outcome.readings = [
+            Reading(
+                id=reading_id,
+                printer_id=printer.id,
+                total_counter=counter,
+                collected_at=collected_at,
+                source=self.source,
+            )
+            for reading_id, (printer, counter) in zip(ids, successful, strict=True)
+            if printer.id is not None
+        ]
         return outcome
 
 
@@ -112,9 +151,7 @@ class CollectionOutcome:
     failures: list[tuple[Printer, str]] = field(default_factory=list)
 
 
-def make_backend(
-    config: Config, override: str | None = None
-) -> tuple[CounterBackend, str]:
+def make_backend(config: Config, override: str | None = None) -> tuple[CounterBackend, str]:
     """Cria o backend de coleta conforme a configuracao.
 
     Retorna ``(backend, rotulo)``. Backends suportados: ``mock`` (Fase 1) e
@@ -125,4 +162,6 @@ def make_backend(
         from .snmp import SNMPBackend
 
         return SNMPBackend(config), "snmp"
-    return MockBackend(), "mock"
+    if name == "mock":
+        return MockBackend(), "mock"
+    raise ValueError(f"Backend de coleta invalido: {name!r}. Use 'mock' ou 'snmp'.")

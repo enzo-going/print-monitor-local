@@ -5,6 +5,7 @@
 <section class="panel">
   <h2>Coleta</h2>
   <form class="filters" method="post" action="/collect">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div>
       <label for="backend">Backend</label>
       <select id="backend" name="backend">

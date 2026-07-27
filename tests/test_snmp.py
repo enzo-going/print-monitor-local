@@ -54,6 +54,26 @@ def test_response_with_error_status():
     assert error_status == 2
 
 
+@pytest.mark.parametrize(
+    "packet",
+    [
+        b"",
+        b"\x30",
+        b"\x30\x82\x01",
+        b"\x30\x05\x02\x01",
+    ],
+)
+def test_parse_response_rejects_truncated_packets(packet):
+    with pytest.raises(SNMPError):
+        parse_response(packet)
+
+
+@pytest.mark.parametrize("oid", ["", "3.1.2", "1.40.2", "1.-1.2", "abc"])
+def test_build_request_rejects_invalid_oid(oid):
+    with pytest.raises(ValueError):
+        build_get_request("public", oid, request_id=1)
+
+
 def _start_udp_responder(value: int):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
@@ -97,7 +117,7 @@ def test_snmp_get_ignores_wrong_request_id():
     port = sock.getsockname()[1]
 
     def serve():
-        data, addr = sock.recvfrom(65535)
+        _data, addr = sock.recvfrom(65535)
         sock.sendto(build_get_response("public", OID, 123, request_id=999_999), addr)
 
     threading.Thread(target=serve, daemon=True).start()
