@@ -34,6 +34,8 @@ def test_index_ok(app_client):
     body = resp.get_data(as_text=True)
     assert "Alfa" in body
     assert "Dashboard" in body
+    assert "104.500" in body
+    assert "30/06/2026 00:00 UTC" in body
 
 
 def test_index_default_loads(app_client):
@@ -132,9 +134,32 @@ def test_collect_mock_via_post(client_and_db):
     db.close()
     resp = client.post("/collect", data={"backend": "mock"}, follow_redirects=True)
     assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "1 leitura(s) salva(s) via mock" in body
+    assert "Último contador" in body
     db = Database(db_path)
     assert len(db.list_readings()) == 1
+    counter = db.list_readings()[0].total_counter
     db.close()
+    assert f"{counter:,}".replace(",", ".") in body
+
+
+def test_empty_dashboard_guides_registration(client_and_db):
+    client, _ = client_and_db
+    body = client.get("/").get_data(as_text=True)
+    assert "Nenhuma impressora ativa cadastrada" in body
+    assert "Cadastrar por IP" in body
+    assert "Descobrir na rede" in body
+    assert "Coletar agora" not in body
+
+
+def test_collect_without_printers_redirects_to_registration(client_and_db):
+    client, _ = client_and_db
+    resp = client.post("/collect", data={"backend": "snmp"}, follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Cadastre ou descubra ao menos uma impressora ativa" in body
+    assert "Cadastrar impressora" in body
 
 
 def test_discover_page_get(client_and_db):
@@ -200,7 +225,7 @@ def test_post_requires_valid_csrf_token(tmp_path):
 
     assert client.post("/collect", data={"backend": "mock"}).status_code == 400
 
-    client.get("/")
+    client.get("/printers")
     with client.session_transaction() as sess:
         token = sess["_csrf_token"]
     response = client.post(

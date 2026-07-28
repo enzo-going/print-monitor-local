@@ -15,6 +15,10 @@ Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
 ### Alterado
 
+- A coleta SNMP real passa a ser o padrão; o backend simulado continua
+  disponível explicitamente para demonstrações e testes.
+- O dashboard agora mostra impressoras ativas, quantidade de leituras, última
+  coleta e o último contador salvo por impressora.
 - Relatórios mensais passam a carregar as leituras do período em uma consulta,
   eliminando o padrão N+1 para parques com muitas impressoras.
 - SQLite passa a usar WAL, espera por bloqueios e índice por período para
@@ -24,6 +28,8 @@ Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
 ### Corrigido
 
+- A ação "Coletar agora" orienta o cadastro quando não há impressoras ativas e
+  explica que a primeira leitura cria a linha de base do cálculo.
 - O timestamp devolvido por uma coleta individual agora é exatamente o mesmo
   persistido no banco.
 - O parser BER/SNMP agora rejeita mensagens truncadas de forma controlada.

@@ -91,7 +91,7 @@ def load_config() -> Config:
     if not db_path.is_absolute():
         db_path = (base / db_path).resolve()
 
-    backend = os.environ.get("PRINT_MONITOR_BACKEND", "mock").strip().lower()
+    backend = os.environ.get("PRINT_MONITOR_BACKEND", "snmp").strip().lower()
     if backend not in {"mock", "snmp"}:
         raise ValueError(f"PRINT_MONITOR_BACKEND deve ser 'mock' ou 'snmp'; recebido {backend!r}.")
 

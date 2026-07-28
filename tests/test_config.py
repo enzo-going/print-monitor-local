@@ -7,6 +7,13 @@ import pytest
 import print_monitor.config as config
 
 
+def test_load_config_defaults_to_real_snmp(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "app_base_dir", lambda: tmp_path)
+    monkeypatch.delenv("PRINT_MONITOR_BACKEND", raising=False)
+
+    assert config.load_config().backend == "snmp"
+
+
 def test_load_config_reads_env_file(tmp_path, monkeypatch):
     # Aponta o diretorio base para um tmp com um .env e limpa o ambiente.
     (tmp_path / ".env").write_text(

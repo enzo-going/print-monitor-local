@@ -4,22 +4,63 @@
 
 <section class="panel">
   <h2>Coleta</h2>
+  {% if active_printer_count %}
   <form class="filters" method="post" action="/collect">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div>
-      <label for="backend">Backend</label>
+      <label for="backend">Modo de coleta</label>
       <select id="backend" name="backend">
-        <option value="mock" {% if default_backend == 'mock' %}selected{% endif %}>mock (simulado)</option>
-        <option value="snmp" {% if default_backend == 'snmp' %}selected{% endif %}>snmp (real)</option>
+        <option value="snmp" {% if default_backend == 'snmp' %}selected{% endif %}>SNMP (impressoras reais)</option>
+        <option value="mock" {% if default_backend == 'mock' %}selected{% endif %}>Simulado (somente teste)</option>
       </select>
     </div>
     <div>
       <button type="submit">Coletar agora</button>
     </div>
     <div class="muted" style="align-self:center">
-      Registra uma leitura do contador de cada impressora ativa.
+      Consulta e salva o contador das {{ active_printer_count }} impressora(s) ativa(s).
     </div>
   </form>
+  <p class="muted">
+    A primeira coleta cria a linha de base. O volume aparece após uma nova leitura
+    quando o contador da impressora aumentar.
+  </p>
+  {% else %}
+  <div class="notice">
+    <p>
+      <strong>Nenhuma impressora ativa cadastrada.</strong>
+      O botão de coleta só pode consultar equipamentos registrados.
+    </p>
+    <div class="actions">
+      <a class="btn-primary" href="/printers">Cadastrar por IP</a>
+      <a class="btn-secondary" href="/discover">Descobrir na rede</a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Status da coleta</h2>
+  <div class="status-grid">
+    <div class="status-card">
+      <div class="muted">Impressoras ativas</div>
+      <div class="status-value">{{ active_printer_count }}</div>
+    </div>
+    <div class="status-card">
+      <div class="muted">Leituras salvas</div>
+      <div class="status-value">{{ reading_summary.total_readings }}</div>
+    </div>
+    <div class="status-card">
+      <div class="muted">Última coleta salva</div>
+      <div class="status-value" style="font-size:16px">
+        {% if reading_summary.last_collected_at %}
+          {{ reading_summary.last_collected_at.strftime("%d/%m/%Y %H:%M UTC") }}
+        {% else %}
+          Ainda não realizada
+        {% endif %}
+      </div>
+    </div>
+  </div>
 </section>
 
 <section class="panel">
@@ -67,6 +108,9 @@
   <h2>Total do mês {{ "%02d"|format(filters.month) }}/{{ filters.year }}</h2>
   <div class="kpi">{{ "{:,}".format(total).replace(",", ".") }}</div>
   <div class="muted">impressões no período (soma das diferenças entre leituras)</div>
+  {% if reading_summary.total_readings == 1 %}
+  <div class="muted">Há somente uma leitura salva; ela é a linha de base do próximo cálculo.</div>
+  {% endif %}
 </section>
 
 <section class="panel">
@@ -96,21 +140,45 @@
 <section class="panel">
   <h2>Detalhamento por impressora</h2>
   {% if report %}
+  <div class="table-wrap">
   <table>
     <thead>
-      <tr><th>Impressora</th><th>IP</th><th>Local</th><th class="num">Volume</th></tr>
+      <tr>
+        <th>Impressora</th>
+        <th>IP</th>
+        <th>Local</th>
+        <th class="num">Último contador</th>
+        <th>Última coleta</th>
+        <th class="num">Volume</th>
+      </tr>
     </thead>
     <tbody>
       {% for pv in report %}
+      {% set latest = latest_by_printer.get(pv.printer_id) %}
       <tr>
         <td>{{ pv.name }}</td>
         <td>{{ pv.ip }}</td>
         <td>{{ pv.location or "-" }}</td>
+        <td class="num">
+          {% if latest %}
+            {{ "{:,}".format(latest.total_counter).replace(",", ".") }}
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td>
+          {% if latest %}
+            {{ latest.collected_at.strftime("%d/%m/%Y %H:%M UTC") }}
+          {% else %}
+            Nunca
+          {% endif %}
+        </td>
         <td class="num">{{ "{:,}".format(pv.volume).replace(",", ".") }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="empty">Nenhuma impressora atende aos filtros.</p>
   {% endif %}
