@@ -6,8 +6,8 @@ from print_monitor.imports import decode_bytes, import_printers_from_csv
 
 CSV_PONTO_VIRGULA = (
     "SETOR;MARCA;MODELO;IP;N° SÉRIE\n"
-    "FINANCEIRO;SAMSUNG;M4080FX;192.168.60.80;088WB07JC10PBTV\n"
-    "COMPRAS;HP;HP E52645;192.168.70.210;BRBSP740K9\n"
+    "FINANCEIRO;EXEMPLO;MODELO-X;192.0.2.80;TEST-SERIAL-001\n"
+    "COMPRAS;EXEMPLO;MODELO-Y;198.51.100.210;TEST-SERIAL-002\n"
 )
 
 CSV_VIRGULA = "NOME,IP,LOCAL\nRecepcao,10.0.0.5,Entrada\n"
@@ -19,12 +19,12 @@ def test_import_semicolon_with_accented_headers(db):
     assert result.skipped == 0
     assert result.errors == []
 
-    fin = db.get_printer_by_ip("192.168.60.80")
+    fin = db.get_printer_by_ip("192.0.2.80")
     assert fin is not None
     assert fin.name == "FINANCEIRO"
     assert fin.location == "FINANCEIRO"
-    assert fin.model == "SAMSUNG M4080FX"  # marca + modelo combinados
-    assert fin.serial == "088WB07JC10PBTV"
+    assert fin.model == "EXEMPLO MODELO-X"  # marca + modelo combinados
+    assert fin.serial == "TEST-SERIAL-001"
 
 
 def test_import_comma_with_name_column(db):

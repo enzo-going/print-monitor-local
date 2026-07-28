@@ -192,7 +192,8 @@ def test_import_printers_via_upload(client_and_db):
 
     client, db_path = client_and_db
     csv_bytes = (
-        "SETOR;MARCA;MODELO;IP;N° SÉRIE\nFINANCEIRO;SAMSUNG;M4080FX;192.168.60.80;088WB07JC10PBTV\n"
+        "SETOR;MARCA;MODELO;IP;N° SÉRIE\n"
+        "FINANCEIRO;EXEMPLO;MODELO-X;192.0.2.80;TEST-SERIAL-001\n"
     ).encode()
     resp = client.post(
         "/printers/import",
@@ -203,7 +204,7 @@ def test_import_printers_via_upload(client_and_db):
     assert resp.status_code == 200
     assert "Importadas: 1" in resp.get_data(as_text=True)
     db = Database(db_path)
-    assert db.get_printer_by_ip("192.168.60.80") is not None
+    assert db.get_printer_by_ip("192.0.2.80") is not None
     db.close()
 
 
