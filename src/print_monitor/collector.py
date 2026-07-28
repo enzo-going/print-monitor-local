@@ -157,7 +157,7 @@ def make_backend(config: Config, override: str | None = None) -> tuple[CounterBa
     Retorna ``(backend, rotulo)``. Backends suportados: ``mock`` (Fase 1) e
     ``snmp`` (Fase 3). O rotulo e usado como ``source`` das leituras.
     """
-    name = (override or config.backend or "mock").strip().lower()
+    name = (override or config.backend or "snmp").strip().lower()
     if name == "snmp":
         from .snmp import SNMPBackend
 

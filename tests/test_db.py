@@ -77,6 +77,30 @@ def test_list_readings_period_filter(db):
     assert [r.total_counter for r in in_june] == [200]
 
 
+def test_reading_summary_empty(db):
+    summary = db.reading_summary()
+    assert summary.total_readings == 0
+    assert summary.printers_with_readings == 0
+    assert summary.last_collected_at is None
+
+
+def test_reading_summary_and_latest_per_printer(db):
+    first = db.add_printer(name="Primeira", ip="192.168.0.20")
+    second = db.add_printer(name="Segunda", ip="192.168.0.21")
+    db.add_reading(first, 100, collected_at=_dt(2026, 6, 1))
+    db.add_reading(first, 250, collected_at=_dt(2026, 6, 2))
+    db.add_reading(second, 900, collected_at=_dt(2026, 6, 3))
+
+    summary = db.reading_summary()
+    assert summary.total_readings == 3
+    assert summary.printers_with_readings == 2
+    assert summary.last_collected_at == _dt(2026, 6, 3)
+    assert [(r.printer_id, r.total_counter) for r in db.latest_readings()] == [
+        (first, 250),
+        (second, 900),
+    ]
+
+
 def test_foreign_key_cascade_on_printer_delete(db):
     pid = db.add_printer(name="HP 1", ip="192.168.0.10")
     db.add_reading(pid, 100, collected_at=_dt(2026, 6, 1))

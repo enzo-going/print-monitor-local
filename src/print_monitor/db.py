@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Self
 
-from .models import Printer, Reading
+from .models import Printer, Reading, ReadingSummary
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS printers (
@@ -203,6 +203,43 @@ class Database:
         query += " ORDER BY printer_id, collected_at"
         rows = self.conn.execute(query, params).fetchall()
         return [_row_to_reading(r) for r in rows]
+
+    def latest_readings(self) -> list[Reading]:
+        """Retorna somente a leitura mais recente de cada impressora."""
+        rows = self.conn.execute(
+            """
+            SELECT r.*
+            FROM readings AS r
+            WHERE r.id = (
+                SELECT r2.id
+                FROM readings AS r2
+                WHERE r2.printer_id = r.printer_id
+                ORDER BY r2.collected_at DESC, r2.id DESC
+                LIMIT 1
+            )
+            ORDER BY r.printer_id
+            """
+        ).fetchall()
+        return [_row_to_reading(row) for row in rows]
+
+    def reading_summary(self) -> ReadingSummary:
+        """Resume o histórico para exibir o estado real da coleta no painel."""
+        row = self.conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_readings,
+                COUNT(DISTINCT printer_id) AS printers_with_readings,
+                MAX(collected_at) AS last_collected_at
+            FROM readings
+            """
+        ).fetchone()
+        assert row is not None
+        last_collected_at = row["last_collected_at"]
+        return ReadingSummary(
+            total_readings=int(row["total_readings"]),
+            printers_with_readings=int(row["printers_with_readings"]),
+            last_collected_at=_from_iso(last_collected_at) if last_collected_at else None,
+        )
 
 
 def _row_to_printer(row: sqlite3.Row) -> Printer:

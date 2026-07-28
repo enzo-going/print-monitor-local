@@ -124,6 +124,11 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         db = open_db()
         try:
             printers = db.list_printers()
+            active_printer_count = sum(printer.active for printer in printers)
+            reading_summary = db.reading_summary()
+            latest_by_printer = {
+                reading.printer_id: reading for reading in db.latest_readings()
+            }
             report = monthly_report(
                 db,
                 f["year"],
@@ -146,6 +151,9 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             months=range(1, 13),
             query=request.query_string.decode(errors="replace"),
             default_backend=app.config["DEFAULT_BACKEND"],
+            active_printer_count=active_printer_count,
+            reading_summary=reading_summary,
+            latest_by_printer=latest_by_printer,
         )
 
     @app.route("/printers")
@@ -243,18 +251,26 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             return redirect(url_for("index"))
         db = open_db()
         try:
+            if not db.list_printers(only_active=True):
+                flash(
+                    "Cadastre ou descubra ao menos uma impressora ativa antes de coletar.",
+                    "erro",
+                )
+                return redirect(url_for("printers_view"))
             outcome = Collector(db, backend, source=source).collect_all(
                 workers=config.collection_workers
             )
         finally:
             db.close()
         if outcome.readings:
-            flash(f"{len(outcome.readings)} leitura(s) coletada(s) via {source}.", "ok")
+            flash(
+                f"{len(outcome.readings)} leitura(s) salva(s) via {source}. "
+                "O volume é calculado pela diferença entre leituras.",
+                "ok",
+            )
         if outcome.failures:
             detalhes = "; ".join(f"{p.ip}: {err}" for p, err in outcome.failures[:5])
             flash(f"{len(outcome.failures)} falha(s). {detalhes}", "erro")
-        if not outcome.readings and not outcome.failures:
-            flash("Nenhuma impressora ativa para coletar.", "erro")
         return redirect(url_for("index"))
 
     @app.route("/discover", methods=["GET", "POST"])
