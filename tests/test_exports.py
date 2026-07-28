@@ -10,9 +10,7 @@ from print_monitor.reports import PrinterVolume
 
 
 def _pv(printer_id, name, ip, location, volume):
-    return PrinterVolume(
-        printer_id=printer_id, name=name, ip=ip, location=location, volume=volume
-    )
+    return PrinterVolume(printer_id=printer_id, name=name, ip=ip, location=location, volume=volume)
 
 
 def test_csv_has_header_and_rows():

@@ -72,3 +72,19 @@ def test_discover_empty_when_no_ports_open():
 def test_discover_rejects_large_range():
     with pytest.raises(ValueError, match="Faixa muito grande"):
         discover("10.0.0.0/16", max_hosts=1024)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"ports": (0,)},
+        {"ports": (65_536,)},
+        {"workers": 0},
+        {"workers": 129},
+        {"timeout": 0},
+        {"max_hosts": 0},
+    ],
+)
+def test_discover_rejects_invalid_limits(kwargs):
+    with pytest.raises(ValueError):
+        discover("127.0.0.1/32", **kwargs)

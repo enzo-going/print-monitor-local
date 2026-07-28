@@ -75,11 +75,11 @@ python -m print_monitor import-printers --file docs/exemplo-impressoras.csv
 # 3. Listar impressoras
 python -m print_monitor list-printers
 
-# 4. Coletar leitura (backend simulado por padrão)
+# 4. Coletar leitura via SNMP real (padrão)
 python -m print_monitor collect --all
 
-#    Coletar via SNMP real (community/timeout vêm do ambiente ou do .env)
-python -m print_monitor collect --all --backend snmp
+#    Usar dados simulados somente para demonstração ou testes
+python -m print_monitor collect --all --backend mock
 
 # 5. Relatório mensal (volume por impressora)
 python -m print_monitor report --year 2026 --month 6
@@ -114,9 +114,18 @@ string* e os tempos de espera vêm do ambiente ou do `.env` (ver `.env.example`)
 nunca do código.
 
 Impressoras incompatíveis ou inacessíveis são registradas como falha sem
-interromper a coleta das demais. O backend padrão é o simulado (`mock`); use
-`--backend snmp` (ou `PRINT_MONITOR_BACKEND=snmp`) para a coleta real. Limitações
-por fabricante/modelo: [`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
+interromper a coleta das demais. As consultas rodam em paralelo (8 por padrão)
+e as leituras bem-sucedidas são gravadas em uma única transação. Ajuste a
+concorrência com `PRINT_MONITOR_WORKERS` ou `collect --workers`. O backend padrão
+é o real (`snmp`); use `--backend mock` (ou
+`PRINT_MONITOR_BACKEND=mock`) apenas para demonstrações e testes. Limitações por
+fabricante/modelo:
+[`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
+
+A primeira coleta salva o contador acumulado como **linha de base**. O volume
+permanece zero até uma leitura posterior registrar aumento nesse contador; o
+dashboard mostra o último contador e o horário da coleta para confirmar que a
+leitura foi salva.
 
 ## Coleta agendada (Windows)
 
@@ -187,6 +196,7 @@ Detalhes em [`docs/empacotamento.md`](docs/empacotamento.md).
 ## Testes
 
 ```powershell
+ruff check src tests scripts
 python -m pytest
 ```
 
@@ -194,6 +204,9 @@ python -m pytest
 
 Copie `.env.example` para `.env` e ajuste os valores. O `.env` e o banco em
 `data/` não são versionados. Nenhuma credencial é armazenada no repositório.
+O painel inclui proteção CSRF e cabeçalhos de segurança, mas continua sendo uma
+ferramenta local: mantenha o host padrão `127.0.0.1` e não o exponha diretamente
+à internet.
 
 ## Licença
 

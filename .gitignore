@@ -9,11 +9,21 @@ data/*.sqlite3
 *.db
 *.sqlite
 *.sqlite3
+data/*
+!data/.gitkeep
 
 # Variáveis de ambiente / credenciais
 .env
 .env.local
 *.local.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
 
 # Python
 __pycache__/

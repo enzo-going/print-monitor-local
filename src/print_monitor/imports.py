@@ -104,20 +104,20 @@ def import_printers_from_csv(db: Database, csv_text: str) -> ImportResult:
         result.errors.append((1, "Coluna de IP nao encontrada no cabecalho."))
         return result
 
-    for line_no, row in enumerate(reader, start=2):
-        def value(field_name: str) -> str:
-            col = cols.get(field_name)
-            return (row.get(col) or "").strip() if col else ""
+    def value(row: dict[str, str | None], field_name: str) -> str:
+        col = cols.get(field_name)
+        return (row.get(col) or "").strip() if col else ""
 
-        ip = value("ip")
+    for line_no, row in enumerate(reader, start=2):
+        ip = value(row, "ip")
         if not ip:
             continue  # linha vazia / sem IP, ignora silenciosamente
 
-        name = value("name") or value("location")
-        location = value("location") or None
-        brand, model = value("brand"), value("model")
+        name = value(row, "name") or value(row, "location")
+        location = value(row, "location") or None
+        brand, model = value(row, "brand"), value(row, "model")
         full_model = " ".join(part for part in (brand, model) if part) or None
-        serial = value("serial") or None
+        serial = value(row, "serial") or None
         if not name:
             name = ip  # ultimo recurso para nao ficar sem nome
 

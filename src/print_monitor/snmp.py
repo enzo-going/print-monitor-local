@@ -70,6 +70,7 @@ class SNMPTimeout(SNMPError):
 # Codificacao BER
 # --------------------------------------------------------------------------
 
+
 def _encode_length(n: int) -> bytes:
     if n < 0x80:
         return bytes([n])
@@ -124,8 +125,17 @@ def _encode_base128(n: int) -> bytes:
 
 
 def _encode_oid(oid: str) -> bytes:
-    parts = [int(p) for p in oid.strip().split(".") if p != ""]
+    try:
+        parts = [int(p) for p in oid.strip().split(".") if p != ""]
+    except ValueError as exc:
+        raise ValueError(f"OID invalido: {oid!r}") from exc
     if len(parts) < 2:
+        raise ValueError(f"OID invalido: {oid!r}")
+    if parts[0] not in (0, 1, 2) or parts[1] < 0:
+        raise ValueError(f"OID invalido: {oid!r}")
+    if parts[0] < 2 and parts[1] > 39:
+        raise ValueError(f"OID invalido: {oid!r}")
+    if any(part < 0 for part in parts[2:]):
         raise ValueError(f"OID invalido: {oid!r}")
     body = bytearray([40 * parts[0] + parts[1]])
     for sub in parts[2:]:
@@ -137,18 +147,11 @@ def _version_code(version: str) -> int:
     return 0 if str(version) in ("1", "v1") else 1
 
 
-def build_get_request(
-    community: str, oid: str, request_id: int, version: str = "2c"
-) -> bytes:
+def build_get_request(community: str, oid: str, request_id: int, version: str = "2c") -> bytes:
     """Monta uma mensagem SNMP GET para um unico OID."""
     varbind = _tlv(_TAG_SEQUENCE, _encode_oid(oid) + _encode_null())
     varbind_list = _tlv(_TAG_SEQUENCE, varbind)
-    pdu_body = (
-        _encode_integer(request_id)
-        + _encode_integer(0)
-        + _encode_integer(0)
-        + varbind_list
-    )
+    pdu_body = _encode_integer(request_id) + _encode_integer(0) + _encode_integer(0) + varbind_list
     pdu = _tlv(_TAG_GET_REQUEST, pdu_body)
     message_body = (
         _encode_integer(_version_code(version))
@@ -162,21 +165,33 @@ def build_get_request(
 # Decodificacao BER
 # --------------------------------------------------------------------------
 
+
 def _decode_length(data: bytes, idx: int) -> tuple[int, int]:
+    if idx >= len(data):
+        raise SNMPError("Mensagem SNMP truncada ao ler comprimento BER.")
     first = data[idx]
     idx += 1
     if first < 0x80:
         return first, idx
     num = first & 0x7F
+    if num == 0:
+        raise SNMPError("Comprimento BER indefinido nao e suportado.")
+    if num > 8 or idx + num > len(data):
+        raise SNMPError("Comprimento BER invalido ou truncado.")
     length = int.from_bytes(data[idx : idx + num], "big")
     return length, idx + num
 
 
 def _read_tlv(data: bytes, idx: int) -> tuple[int, bytes, int]:
+    if idx >= len(data):
+        raise SNMPError("Mensagem SNMP truncada ao ler campo BER.")
     tag = data[idx]
     length, idx = _decode_length(data, idx + 1)
-    value = data[idx : idx + length]
-    return tag, value, idx + length
+    end = idx + length
+    if end > len(data):
+        raise SNMPError("Campo BER excede o tamanho da mensagem SNMP.")
+    value = data[idx:end]
+    return tag, value, end
 
 
 def _decode_oid(data: bytes) -> str:
@@ -213,7 +228,9 @@ def parse_response(data: bytes) -> tuple[int, int, list[tuple[str, object]]]:
     idx = 0
     _, _version, idx = _read_tlv(message, idx)
     _, _community, idx = _read_tlv(message, idx)
-    _, pdu, idx = _read_tlv(message, idx)
+    pdu_tag, pdu, idx = _read_tlv(message, idx)
+    if pdu_tag not in (_TAG_GET_REQUEST, _TAG_GET_RESPONSE):
+        raise SNMPError("Tipo de PDU SNMP inesperado.")
 
     pidx = 0
     _, request_id_raw, pidx = _read_tlv(pdu, pidx)
@@ -230,9 +247,7 @@ def parse_response(data: bytes) -> tuple[int, int, list[tuple[str, object]]]:
         oidx = 0
         _, oid_raw, oidx = _read_tlv(varbind, oidx)
         value_tag, value_raw, oidx = _read_tlv(varbind, oidx)
-        varbinds.append(
-            (_decode_oid(oid_raw), _decode_varbind_value(value_tag, value_raw))
-        )
+        varbinds.append((_decode_oid(oid_raw), _decode_varbind_value(value_tag, value_raw)))
     return request_id, error_status, varbinds
 
 
@@ -264,6 +279,7 @@ def build_get_response(
 # --------------------------------------------------------------------------
 # Cliente SNMP GET
 # --------------------------------------------------------------------------
+
 
 def snmp_get(
     host: str,
@@ -300,12 +316,10 @@ def snmp_get(
                 sock.settimeout(remaining)
                 try:
                     data, addr = sock.recvfrom(65535)
-                except socket.timeout:
+                except TimeoutError:
                     break
                 except OSError as exc:
-                    raise SNMPError(
-                        f"Erro de rede ao consultar {host}: {exc}"
-                    ) from exc
+                    raise SNMPError(f"Erro de rede ao consultar {host}: {exc}") from exc
                 if addr[0] != host:
                     continue  # resposta de outra origem
                 try:
@@ -316,9 +330,7 @@ def snmp_get(
                     continue  # resposta de uma consulta anterior
 
                 if error_status != 0:
-                    raise SNMPError(
-                        f"Agente retornou erro SNMP {error_status} para {oid}."
-                    )
+                    raise SNMPError(f"Agente retornou erro SNMP {error_status} para {oid}.")
                 if not varbinds:
                     raise SNMPError("Resposta SNMP sem varbinds.")
                 _, value = varbinds[0]
@@ -358,6 +370,4 @@ class SNMPBackend:
                 )
             except SNMPError as exc:
                 last_error = exc
-        raise SNMPError(
-            f"Falha ao ler contador de {printer.ip}: {last_error}"
-        )
+        raise SNMPError(f"Falha ao ler contador de {printer.ip}: {last_error}")

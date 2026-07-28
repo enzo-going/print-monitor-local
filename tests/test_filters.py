@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from print_monitor.models import Printer
 from print_monitor.reports import filter_printers, monthly_report
@@ -46,8 +46,8 @@ def test_no_filters_returns_all():
 def test_monthly_report_respects_filters(db):
     a = db.add_printer(name="Alfa", ip="192.168.10.21", location="Financeiro")
     db.add_printer(name="Beta", ip="192.168.20.30", location="RH")
-    db.add_reading(a, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=timezone.utc))
-    db.add_reading(a, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=timezone.utc))
+    db.add_reading(a, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=UTC))
+    db.add_reading(a, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
 
     report = monthly_report(db, 2026, 6, location="Financeiro")
     assert [pv.name for pv in report] == ["Alfa"]
