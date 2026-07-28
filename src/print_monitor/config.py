@@ -58,8 +58,27 @@ class Config:
     backend: str
     snmp_community: str
     snmp_port: int
-    snmp_timeout: int
+    snmp_timeout: float
     snmp_retries: int
+    collection_workers: int = 8
+
+
+def _env_number(
+    name: str,
+    default: str,
+    cast: type[int] | type[float],
+    *,
+    minimum: float,
+    maximum: float,
+) -> int | float:
+    raw = os.environ.get(name, default).strip()
+    try:
+        value = cast(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} deve ser numerico; recebido {raw!r}.") from exc
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} deve estar entre {minimum:g} e {maximum:g}; recebido {raw!r}.")
+    return value
 
 
 def load_config() -> Config:
@@ -72,11 +91,18 @@ def load_config() -> Config:
     if not db_path.is_absolute():
         db_path = (base / db_path).resolve()
 
+    backend = os.environ.get("PRINT_MONITOR_BACKEND", "snmp").strip().lower()
+    if backend not in {"mock", "snmp"}:
+        raise ValueError(f"PRINT_MONITOR_BACKEND deve ser 'mock' ou 'snmp'; recebido {backend!r}.")
+
     return Config(
         db_path=db_path,
-        backend=os.environ.get("PRINT_MONITOR_BACKEND", "mock").strip().lower(),
+        backend=backend,
         snmp_community=os.environ.get("SNMP_COMMUNITY", "public"),
-        snmp_port=int(os.environ.get("SNMP_PORT", "161")),
-        snmp_timeout=int(os.environ.get("SNMP_TIMEOUT", "2")),
-        snmp_retries=int(os.environ.get("SNMP_RETRIES", "1")),
+        snmp_port=int(_env_number("SNMP_PORT", "161", int, minimum=1, maximum=65535)),
+        snmp_timeout=float(_env_number("SNMP_TIMEOUT", "2", float, minimum=0.1, maximum=60)),
+        snmp_retries=int(_env_number("SNMP_RETRIES", "1", int, minimum=0, maximum=10)),
+        collection_workers=int(
+            _env_number("PRINT_MONITOR_WORKERS", "8", int, minimum=1, maximum=128)
+        ),
     )

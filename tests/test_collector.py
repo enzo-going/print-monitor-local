@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
+import pytest
+
 from print_monitor.collector import (
     Collector,
     MockBackend,
@@ -36,6 +41,11 @@ def test_make_backend_snmp():
     assert isinstance(backend, SNMPBackend)
 
 
+def test_make_backend_rejects_unknown_value():
+    with pytest.raises(ValueError, match="Backend de coleta invalido"):
+        make_backend(_config("desconhecido"))
+
+
 class _FlakyBackend:
     """Backend de teste: falha para um IP especifico."""
 
@@ -59,3 +69,42 @@ def test_collect_all_records_failures(db):
     assert "incompativel" in message
     # A leitura bem-sucedida foi persistida; a falha nao.
     assert len(db.list_readings()) == 1
+
+
+class _ConcurrentBackend:
+    def __init__(self):
+        self.active = 0
+        self.max_active = 0
+        self.lock = threading.Lock()
+
+    def read_total_counter(self, printer: Printer) -> int:
+        with self.lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        time.sleep(0.03)
+        with self.lock:
+            self.active -= 1
+        return 10_000
+
+
+def test_collect_all_reads_in_parallel_and_writes_all(db):
+    for index in range(4):
+        db.add_printer(name=f"P{index}", ip=f"192.168.1.{index + 1}")
+    backend = _ConcurrentBackend()
+
+    outcome = Collector(db, backend, source="test").collect_all(workers=4)
+
+    assert backend.max_active > 1
+    assert len(outcome.readings) == 4
+    assert len(db.list_readings()) == 4
+
+
+def test_collect_returns_the_exact_persisted_timestamp(db):
+    printer_id = db.add_printer(name="P", ip="192.168.2.1")
+    printer = db.get_printer(printer_id)
+    assert printer is not None
+
+    reading = Collector(db, _FlakyBackend(), source="test").collect(printer)
+    persisted = db.list_readings(printer_id=printer_id)[0]
+
+    assert reading.collected_at == persisted.collected_at

@@ -92,6 +92,19 @@ def discover(
     Levanta ``ValueError`` se a faixa exceder ``max_hosts`` (protecao contra
     varredura ampla demais). A ordem do resultado e crescente por endereco.
     """
+    if not cidr.strip():
+        raise ValueError("Informe uma faixa de rede em formato CIDR.")
+    if not 1 <= max_hosts <= 65_536:
+        raise ValueError("max_hosts deve estar entre 1 e 65536.")
+    if not 1 <= workers <= 128:
+        raise ValueError("workers deve estar entre 1 e 128.")
+    if not 0 < timeout <= 10:
+        raise ValueError("timeout deve ser maior que 0 e menor ou igual a 10.")
+    if not ports:
+        ports = DEFAULT_PRINTER_PORTS
+    if any(not 1 <= port <= 65_535 for port in ports):
+        raise ValueError("As portas devem estar entre 1 e 65535.")
+
     count = host_count(cidr)
     if count > max_hosts:
         raise ValueError(
@@ -110,7 +123,10 @@ def discover(
 
     results: list[DiscoveredHost] = []
     if hosts:
-        with ThreadPoolExecutor(max_workers=max(1, workers)) as executor:
+        with ThreadPoolExecutor(
+            max_workers=workers,
+            thread_name_prefix="print-discovery",
+        ) as executor:
             for found in executor.map(probe, hosts):
                 if found is not None:
                     results.append(found)

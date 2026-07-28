@@ -8,10 +8,12 @@ manager.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 
-from .models import Printer, Reading
+from .models import Printer, Reading, ReadingSummary
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS printers (
@@ -36,27 +38,35 @@ CREATE TABLE IF NOT EXISTS readings (
 
 CREATE INDEX IF NOT EXISTS idx_readings_printer_time
     ON readings (printer_id, collected_at);
+
+CREATE INDEX IF NOT EXISTS idx_readings_time_printer
+    ON readings (collected_at, printer_id);
+"""
+
+_INSERT_READING = """
+INSERT INTO readings (printer_id, total_counter, collected_at, source)
+VALUES (?, ?, ?, ?)
 """
 
 
 def utcnow() -> datetime:
     """Retorna o instante atual em UTC (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _to_iso(value: datetime) -> str:
     """Serializa um datetime para ISO 8601, assumindo UTC quando ingenuo."""
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat()
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat()
 
 
 def _from_iso(value: str) -> datetime:
     """Reconstroi um datetime UTC a partir de uma string ISO 8601."""
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 class Database:
@@ -66,9 +76,14 @@ class Database:
         self.path = Path(path)
         if self.path.parent and str(self.path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path))
+        self.conn = sqlite3.connect(str(self.path), timeout=10)
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA foreign_keys = ON;")
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA busy_timeout = 10000")
+        if str(self.path) != ":memory:":
+            # WAL permite que o dashboard leia relatorios enquanto uma coleta grava.
+            self.conn.execute("PRAGMA journal_mode = WAL")
+            self.conn.execute("PRAGMA synchronous = NORMAL")
 
     # -- ciclo de vida -----------------------------------------------------
 
@@ -80,7 +95,7 @@ class Database:
     def close(self) -> None:
         self.conn.close()
 
-    def __enter__(self) -> "Database":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -109,15 +124,11 @@ class Database:
         return int(cur.lastrowid)
 
     def get_printer(self, printer_id: int) -> Printer | None:
-        row = self.conn.execute(
-            "SELECT * FROM printers WHERE id = ?", (printer_id,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM printers WHERE id = ?", (printer_id,)).fetchone()
         return _row_to_printer(row) if row else None
 
     def get_printer_by_ip(self, ip: str) -> Printer | None:
-        row = self.conn.execute(
-            "SELECT * FROM printers WHERE ip = ?", (ip,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM printers WHERE ip = ?", (ip,)).fetchone()
         return _row_to_printer(row) if row else None
 
     def list_printers(self, only_active: bool = False) -> list[Printer]:
@@ -146,14 +157,30 @@ class Database:
         """Registra uma leitura do contador total."""
         collected_at = collected_at or utcnow()
         cur = self.conn.execute(
-            """
-            INSERT INTO readings (printer_id, total_counter, collected_at, source)
-            VALUES (?, ?, ?, ?)
-            """,
+            _INSERT_READING,
             (printer_id, total_counter, _to_iso(collected_at), source),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def add_readings(
+        self,
+        readings: Iterable[tuple[int, int, datetime, str]],
+    ) -> list[int]:
+        """Registra varias leituras em uma unica transacao atomica."""
+        ids: list[int] = []
+        try:
+            for printer_id, total_counter, collected_at, source in readings:
+                cur = self.conn.execute(
+                    _INSERT_READING,
+                    (printer_id, total_counter, _to_iso(collected_at), source),
+                )
+                ids.append(int(cur.lastrowid))
+        except Exception:
+            self.conn.rollback()
+            raise
+        self.conn.commit()
+        return ids
 
     def list_readings(
         self,
@@ -176,6 +203,43 @@ class Database:
         query += " ORDER BY printer_id, collected_at"
         rows = self.conn.execute(query, params).fetchall()
         return [_row_to_reading(r) for r in rows]
+
+    def latest_readings(self) -> list[Reading]:
+        """Retorna somente a leitura mais recente de cada impressora."""
+        rows = self.conn.execute(
+            """
+            SELECT r.*
+            FROM readings AS r
+            WHERE r.id = (
+                SELECT r2.id
+                FROM readings AS r2
+                WHERE r2.printer_id = r.printer_id
+                ORDER BY r2.collected_at DESC, r2.id DESC
+                LIMIT 1
+            )
+            ORDER BY r.printer_id
+            """
+        ).fetchall()
+        return [_row_to_reading(row) for row in rows]
+
+    def reading_summary(self) -> ReadingSummary:
+        """Resume o histórico para exibir o estado real da coleta no painel."""
+        row = self.conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_readings,
+                COUNT(DISTINCT printer_id) AS printers_with_readings,
+                MAX(collected_at) AS last_collected_at
+            FROM readings
+            """
+        ).fetchone()
+        assert row is not None
+        last_collected_at = row["last_collected_at"]
+        return ReadingSummary(
+            total_readings=int(row["total_readings"]),
+            printers_with_readings=int(row["printers_with_readings"]),
+            last_collected_at=_from_iso(last_collected_at) if last_collected_at else None,
+        )
 
 
 def _row_to_printer(row: sqlite3.Row) -> Printer:

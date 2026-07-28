@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from print_monitor.models import Reading
 from print_monitor.reports import (
@@ -19,7 +19,7 @@ def _reading(counter: int, year: int, month: int, day: int) -> Reading:
         id=None,
         printer_id=1,
         total_counter=counter,
-        collected_at=datetime(year, month, day, tzinfo=timezone.utc),
+        collected_at=datetime(year, month, day, tzinfo=UTC),
     )
 
 
@@ -45,7 +45,7 @@ def test_volume_ignores_other_months():
         _reading(100_000, 2026, 5, 31),  # fora (maio)
         _reading(100_500, 2026, 6, 1),
         _reading(102_000, 2026, 6, 30),
-        _reading(103_000, 2026, 7, 1),   # fora (julho)
+        _reading(103_000, 2026, 7, 1),  # fora (julho)
     ]
     assert monthly_volume(readings, 2026, 6) == 1500
 
@@ -55,8 +55,8 @@ def test_volume_with_counter_reset_is_robust():
     readings = [
         _reading(124_000, 2026, 6, 1),
         _reading(125_000, 2026, 6, 10),  # +1000
-        _reading(300, 2026, 6, 20),      # reset (descartado)
-        _reading(1_300, 2026, 6, 30),    # +1000
+        _reading(300, 2026, 6, 20),  # reset (descartado)
+        _reading(1_300, 2026, 6, 30),  # +1000
     ]
     assert monthly_volume(readings, 2026, 6) == 2000
 
@@ -68,15 +68,15 @@ def test_volume_zero_with_few_readings():
 
 def test_month_bounds_inclusive_end():
     start, end = month_bounds(2026, 2)  # ano nao bissexto: 28 dias
-    assert start == datetime(2026, 2, 1, tzinfo=timezone.utc)
+    assert start == datetime(2026, 2, 1, tzinfo=UTC)
     assert end.year == 2026 and end.month == 2 and end.day == 28
-    assert end < datetime(2026, 3, 1, tzinfo=timezone.utc)
+    assert end < datetime(2026, 3, 1, tzinfo=UTC)
 
 
 def test_month_bounds_december():
     start, end = month_bounds(2026, 12)
-    assert start == datetime(2026, 12, 1, tzinfo=timezone.utc)
-    assert end < datetime(2027, 1, 1, tzinfo=timezone.utc)
+    assert start == datetime(2026, 12, 1, tzinfo=UTC)
+    assert end < datetime(2027, 1, 1, tzinfo=UTC)
 
 
 def test_month_bounds_rejects_out_of_range():
@@ -95,10 +95,10 @@ def test_monthly_report_and_ranking(db):
     b = db.add_printer(name="Beta", ip="10.0.0.2", location="RH")
     db.add_printer(name="Gama", ip="10.0.0.3")  # sem leituras -> volume 0
 
-    db.add_reading(a, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=timezone.utc))
-    db.add_reading(a, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=timezone.utc))
-    db.add_reading(b, 50_000, collected_at=datetime(2026, 6, 1, tzinfo=timezone.utc))
-    db.add_reading(b, 51_000, collected_at=datetime(2026, 6, 30, tzinfo=timezone.utc))
+    db.add_reading(a, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=UTC))
+    db.add_reading(a, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
+    db.add_reading(b, 50_000, collected_at=datetime(2026, 6, 1, tzinfo=UTC))
+    db.add_reading(b, 51_000, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
 
     report = monthly_report(db, 2026, 6)
     # Ordenado do maior para o menor volume.

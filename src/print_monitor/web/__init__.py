@@ -14,16 +14,19 @@ threads).
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from hmac import compare_digest
 from pathlib import Path
 
 from flask import (
     Flask,
     Response,
+    abort,
     flash,
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 
@@ -51,9 +54,46 @@ def create_app(db_path: str | Path | None = None) -> Flask:
     app = Flask(__name__, template_folder=template_folder)
     # Chave de sessao por processo (apenas para mensagens flash; app local).
     app.secret_key = secrets.token_hex(16)
+    app.config.update(
+        CSRF_ENABLED=True,
+        MAX_CONTENT_LENGTH=2 * 1024 * 1024,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Strict",
+    )
     config = load_config()
     app.config["DB_PATH"] = str(db_path or config.db_path)
     app.config["DEFAULT_BACKEND"] = config.backend
+
+    def csrf_token() -> str:
+        token = session.get("_csrf_token")
+        if not token:
+            token = secrets.token_urlsafe(32)
+            session["_csrf_token"] = token
+        return token
+
+    app.jinja_env.globals["csrf_token"] = csrf_token
+
+    @app.before_request
+    def protect_post_requests() -> None:
+        if request.method != "POST" or not app.config["CSRF_ENABLED"]:
+            return
+        expected = session.get("_csrf_token", "")
+        supplied = request.form.get("_csrf_token", "")
+        if not expected or not supplied or not compare_digest(expected, supplied):
+            abort(400, description="Token CSRF ausente ou invalido.")
+
+    @app.after_request
+    def add_security_headers(response: Response) -> Response:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; "
+            "base-uri 'none'"
+        )
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     def open_db() -> Database:
         db = Database(app.config["DB_PATH"])
@@ -61,7 +101,7 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         return db
 
     def read_filters() -> dict:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         year = _parse_int(request.args.get("year"), now.year)
         month = _parse_int(request.args.get("month"), now.month)
         if not (year and 1 <= year <= 9999):
@@ -84,6 +124,11 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         db = open_db()
         try:
             printers = db.list_printers()
+            active_printer_count = sum(printer.active for printer in printers)
+            reading_summary = db.reading_summary()
+            latest_by_printer = {
+                reading.printer_id: reading for reading in db.latest_readings()
+            }
             report = monthly_report(
                 db,
                 f["year"],
@@ -104,8 +149,11 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             printers=printers,
             filters=f,
             months=range(1, 13),
-            query=request.query_string.decode(),
+            query=request.query_string.decode(errors="replace"),
             default_backend=app.config["DEFAULT_BACKEND"],
+            active_printer_count=active_printer_count,
+            reading_summary=reading_summary,
+            latest_by_printer=latest_by_printer,
         )
 
     @app.route("/printers")
@@ -196,22 +244,34 @@ def create_app(db_path: str | Path | None = None) -> Flask:
     @app.route("/collect", methods=["POST"])
     def collect() -> Response:
         backend_name = request.form.get("backend") or app.config["DEFAULT_BACKEND"]
-        db = open_db()
         try:
             backend, source = make_backend(config, override=backend_name)
-            outcome = Collector(db, backend, source=source).collect_all()
+        except ValueError as exc:
+            flash(str(exc), "erro")
+            return redirect(url_for("index"))
+        db = open_db()
+        try:
+            if not db.list_printers(only_active=True):
+                flash(
+                    "Cadastre ou descubra ao menos uma impressora ativa antes de coletar.",
+                    "erro",
+                )
+                return redirect(url_for("printers_view"))
+            outcome = Collector(db, backend, source=source).collect_all(
+                workers=config.collection_workers
+            )
         finally:
             db.close()
         if outcome.readings:
             flash(
-                f"{len(outcome.readings)} leitura(s) coletada(s) via {source}.", "ok"
+                f"{len(outcome.readings)} leitura(s) salva(s) via {source}. "
+                "O volume é calculado pela diferença entre leituras.",
+                "ok",
             )
         if outcome.failures:
             detalhes = "; ".join(f"{p.ip}: {err}" for p, err in outcome.failures[:5])
             flash(f"{len(outcome.failures)} falha(s). {detalhes}", "erro")
-        if not outcome.readings and not outcome.failures:
-            flash("Nenhuma impressora ativa para coletar.", "erro")
-        return redirect(request.referrer or url_for("index"))
+        return redirect(url_for("index"))
 
     @app.route("/discover", methods=["GET", "POST"])
     def discover_view() -> str:
@@ -230,9 +290,10 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             params["register"] = bool(request.form.get("register"))
             params["max_hosts"] = _parse_int(request.form.get("max_hosts"), 1024)
             try:
-                ports = tuple(
-                    int(p) for p in params["ports"].split(",") if p.strip()
-                ) or DEFAULT_PRINTER_PORTS
+                ports = (
+                    tuple(int(p) for p in params["ports"].split(",") if p.strip())
+                    or DEFAULT_PRINTER_PORTS
+                )
                 results = discover(
                     params["network"],
                     ports=ports,
@@ -250,9 +311,7 @@ def create_app(db_path: str | Path | None = None) -> Flask:
                     try:
                         for d in results:
                             if db.get_printer_by_ip(d.ip) is None:
-                                register_printer(
-                                    db, name=f"Impressora {d.ip}", ip=d.ip
-                                )
+                                register_printer(db, name=f"Impressora {d.ip}", ip=d.ip)
                                 added += 1
                     finally:
                         db.close()

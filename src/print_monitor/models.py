@@ -32,3 +32,12 @@ class Reading:
     total_counter: int
     collected_at: datetime
     source: str = "manual"
+
+
+@dataclass(frozen=True)
+class ReadingSummary:
+    """Resumo operacional das leituras armazenadas."""
+
+    total_readings: int
+    printers_with_readings: int
+    last_collected_at: datetime | None
