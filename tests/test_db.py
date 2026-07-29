@@ -107,3 +107,46 @@ def test_foreign_key_cascade_on_printer_delete(db):
     db.conn.execute("DELETE FROM printers WHERE id = ?", (pid,))
     db.conn.commit()
     assert db.list_readings(printer_id=pid) == []
+
+
+def test_ignore_and_restore_reading_without_deleting_it(db):
+    pid = db.add_printer(name="Alfa", ip="192.0.2.20")
+    reading_id = db.add_reading(pid, 100, collected_at=_dt(2026, 6, 1))
+
+    assert db.ignore_reading(reading_id, "contador incorreto") is True
+    assert db.list_readings(pid) == []
+    ignored = db.get_reading(reading_id)
+    assert ignored is not None
+    assert ignored.ignored is True
+    assert ignored.ignore_reason == "contador incorreto"
+
+    assert db.restore_reading(reading_id) is True
+    assert [reading.total_counter for reading in db.list_readings(pid)] == [100]
+
+
+def test_period_query_includes_only_latest_valid_baseline(db):
+    pid = db.add_printer(name="Alfa", ip="192.0.2.21")
+    old_id = db.add_reading(pid, 100, collected_at=_dt(2026, 5, 1))
+    baseline_id = db.add_reading(pid, 200, collected_at=_dt(2026, 5, 31))
+    period_id = db.add_reading(pid, 300, collected_at=_dt(2026, 6, 15))
+
+    rows = db.list_period_readings_with_baseline(
+        {pid},
+        _dt(2026, 6, 1),
+        _dt(2026, 6, 30),
+    )
+    assert [row.id for row in rows] == [baseline_id, period_id]
+    assert old_id not in {row.id for row in rows}
+
+
+def test_reading_deltas_returns_only_requested_valid_rows(db):
+    pid = db.add_printer(name="Alfa", ip="192.0.2.22")
+    first = db.add_reading(pid, 100, collected_at=_dt(2026, 6, 1))
+    second = db.add_reading(pid, 175, collected_at=_dt(2026, 6, 2))
+    ignored = db.add_reading(pid, 999, collected_at=_dt(2026, 6, 3))
+    db.ignore_reading(ignored)
+
+    assert db.reading_deltas({first, second, ignored}) == {
+        first: None,
+        second: 75,
+    }

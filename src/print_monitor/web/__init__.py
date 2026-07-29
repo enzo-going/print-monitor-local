@@ -1,22 +1,13 @@
-"""Dashboard local (Flask) — interface completa do mini app.
-
-Alem da visualizacao do volume mensal (filtros, ranking, exportacao CSV), a
-interface permite gerir a ferramenta sem usar a linha de comando: cadastrar e
-remover impressoras, coletar leituras (mock ou SNMP) e descobrir impressoras na
-rede.
-
-A aplicacao e criada por um *factory* (``create_app``), o que facilita os testes
-com ``app.test_client()``. Cada requisicao abre e fecha sua propria conexao
-SQLite (o servidor e multithread e conexoes nao podem ser compartilhadas entre
-threads).
-"""
+"""Dashboard local para coleta, relatorios e correcao de leituras."""
 
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, tzinfo
 from hmac import compare_digest
+from ipaddress import ip_address
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import (
     Flask,
@@ -37,7 +28,29 @@ from ..discovery import DEFAULT_PRINTER_PORTS, discover
 from ..exports import report_to_csv
 from ..imports import decode_bytes, import_printers_from_csv
 from ..printers import register_printer
-from ..reports import monthly_report
+from ..reports import monthly_report, system_timezone
+
+MONTH_NAMES = (
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
+)
+
+SOURCE_LABELS = {
+    "snmp": "Coleta automática",
+    "manual": "Informada manualmente",
+    "mock": "Simulação",
+    "seed": "Demonstração",
+}
 
 
 def _parse_int(value: str | None, default: int | None = None) -> int | None:
@@ -47,12 +60,52 @@ def _parse_int(value: str | None, default: int | None = None) -> int | None:
         return default
 
 
-def create_app(db_path: str | Path | None = None) -> Flask:
-    # template_folder explicito: resolve corretamente tanto em execucao normal
-    # quanto empacotado com PyInstaller (templates incluidos via --add-data).
-    template_folder = str(Path(__file__).resolve().parent / "templates")
-    app = Flask(__name__, template_folder=template_folder)
-    # Chave de sessao por processo (apenas para mensagens flash; app local).
+def _shift_month(year: int, month: int, offset: int) -> tuple[int, int]:
+    absolute = year * 12 + month - 1 + offset
+    shifted_year, zero_based_month = divmod(absolute, 12)
+    return shifted_year, zero_based_month + 1
+
+
+def _number_pt(value: int | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:,}".replace(",", ".")
+
+
+def _is_local_request_host(host_header: str) -> bool:
+    """Aceita somente localhost ou IPs de loopback no cabecalho Host."""
+    try:
+        hostname = urlsplit(f"//{host_header}").hostname
+    except ValueError:
+        return False
+    if hostname is None:
+        return False
+    normalized = hostname.lower().rstrip(".")
+    if normalized == "localhost":
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def create_app(
+    db_path: str | Path | None = None,
+    *,
+    local_timezone: tzinfo | None = None,
+) -> Flask:
+    """Cria o app Flask.
+
+    ``local_timezone`` e injetavel para testes. Na instalacao, o fuso configurado
+    no Windows e usado para definir o mes e exibir horarios locais.
+    """
+    web_dir = Path(__file__).resolve().parent
+    app = Flask(
+        __name__,
+        template_folder=str(web_dir / "templates"),
+        static_folder=str(web_dir / "static"),
+        static_url_path="/static",
+    )
     app.secret_key = secrets.token_hex(16)
     app.config.update(
         CSRF_ENABLED=True,
@@ -63,6 +116,7 @@ def create_app(db_path: str | Path | None = None) -> Flask:
     config = load_config()
     app.config["DB_PATH"] = str(db_path or config.db_path)
     app.config["DEFAULT_BACKEND"] = config.backend
+    display_timezone = local_timezone or system_timezone()
 
     def csrf_token() -> str:
         token = session.get("_csrf_token")
@@ -71,21 +125,34 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             session["_csrf_token"] = token
         return token
 
-    app.jinja_env.globals["csrf_token"] = csrf_token
+    def local_datetime(value: datetime | None) -> str:
+        if value is None:
+            return "—"
+        return value.astimezone(display_timezone).strftime("%d/%m/%Y às %H:%M")
+
+    app.jinja_env.globals.update(
+        csrf_token=csrf_token,
+        month_names=MONTH_NAMES,
+        source_labels=SOURCE_LABELS,
+    )
+    app.jinja_env.filters["number_pt"] = _number_pt
+    app.jinja_env.filters["local_datetime"] = local_datetime
 
     @app.before_request
-    def protect_post_requests() -> None:
+    def protect_local_requests() -> None:
+        if not _is_local_request_host(request.host):
+            abort(400, description="Host local invalido.")
         if request.method != "POST" or not app.config["CSRF_ENABLED"]:
             return
         expected = session.get("_csrf_token", "")
         supplied = request.form.get("_csrf_token", "")
         if not expected or not supplied or not compare_digest(expected, supplied):
-            abort(400, description="Token CSRF ausente ou invalido.")
+            abort(400, description="Token CSRF ausente ou inválido.")
 
     @app.after_request
     def add_security_headers(response: Response) -> Response:
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "default-src 'self'; style-src 'self'; script-src 'self'; "
             "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; "
             "base-uri 'none'"
         )
@@ -101,7 +168,7 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         return db
 
     def read_filters() -> dict:
-        now = datetime.now(UTC)
+        now = datetime.now(display_timezone)
         year = _parse_int(request.args.get("year"), now.year)
         month = _parse_int(request.args.get("month"), now.month)
         if not (year and 1 <= year <= 9999):
@@ -116,45 +183,230 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             "location": (request.args.get("location") or "").strip(),
         }
 
-    # -- visualizacao ------------------------------------------------------
+    # -- visao mensal ----------------------------------------------------
 
     @app.route("/")
     def index() -> str:
-        f = read_filters()
+        filters = read_filters()
         db = open_db()
         try:
             printers = db.list_printers()
             active_printer_count = sum(printer.active for printer in printers)
             reading_summary = db.reading_summary()
-            latest_by_printer = {
-                reading.printer_id: reading for reading in db.latest_readings()
-            }
+            latest_by_printer = {reading.printer_id: reading for reading in db.latest_readings()}
+            recent_readings = db.list_recent_readings(limit=5)
             report = monthly_report(
                 db,
-                f["year"],
-                f["month"],
-                printer_id=f["printer_id"],
-                ip=f["ip"] or None,
-                location=f["location"] or None,
+                filters["year"],
+                filters["month"],
+                printer_id=filters["printer_id"],
+                ip=filters["ip"] or None,
+                location=filters["location"] or None,
+                timezone=display_timezone,
             )
         finally:
             db.close()
-        total = sum(pv.volume for pv in report)
-        top = [pv for pv in report if pv.volume > 0]
+
+        measured = [item for item in report if item.measurable]
+        ranking = [item for item in measured if item.volume > 0]
+        total = sum(item.volume for item in measured)
+        partial_count = sum(item.state == "partial" for item in measured)
+        previous_year, previous_month = _shift_month(filters["year"], filters["month"], -1)
+        next_year, next_month = _shift_month(filters["year"], filters["month"], 1)
+        now_local = datetime.now(display_timezone)
+
+        export_params: dict[str, object] = {
+            "year": filters["year"],
+            "month": filters["month"],
+        }
+        for key in ("printer_id", "ip", "location"):
+            if filters[key] not in (None, ""):
+                export_params[key] = filters[key]
+
+        def period_url(year: int, month: int) -> str:
+            return url_for(
+                "index",
+                **{**export_params, "year": year, "month": month},
+            )
+
         return render_template(
             "index.html",
             report=report,
-            ranking=top,
+            ranking=ranking,
             total=total,
+            has_measured_data=bool(measured),
+            measurable_count=len(measured),
+            partial_count=partial_count,
             printers=printers,
-            filters=f,
-            months=range(1, 13),
-            query=request.query_string.decode(errors="replace"),
+            printer_by_id={printer.id: printer for printer in printers},
+            filters=filters,
+            months=enumerate(MONTH_NAMES, start=1),
+            period_label=f"{MONTH_NAMES[filters['month'] - 1]} de {filters['year']}",
+            previous_period_url=period_url(previous_year, previous_month),
+            next_period_url=period_url(next_year, next_month),
+            current_period_url=period_url(now_local.year, now_local.month),
+            export_url=url_for("export_csv", **export_params),
             default_backend=app.config["DEFAULT_BACKEND"],
             active_printer_count=active_printer_count,
             reading_summary=reading_summary,
             latest_by_printer=latest_by_printer,
+            recent_readings=recent_readings,
         )
+
+    @app.route("/export.csv")
+    def export_csv() -> Response:
+        filters = read_filters()
+        db = open_db()
+        try:
+            report = monthly_report(
+                db,
+                filters["year"],
+                filters["month"],
+                printer_id=filters["printer_id"],
+                ip=filters["ip"] or None,
+                location=filters["location"] or None,
+                timezone=display_timezone,
+            )
+        finally:
+            db.close()
+        csv_text = report_to_csv(report, filters["year"], filters["month"])
+        filename = f"relatorio-{filters['year']}-{filters['month']:02d}.csv"
+        return Response(
+            csv_text,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # -- historico e correcoes ------------------------------------------
+
+    @app.route("/readings")
+    def readings_view() -> str:
+        selected_printer_id = _parse_int(request.args.get("printer_id"))
+        db = open_db()
+        try:
+            printers = db.list_printers()
+            history = db.list_recent_readings(
+                limit=100,
+                printer_id=selected_printer_id,
+            )
+            delta_by_id = db.reading_deltas(
+                {
+                    reading.id
+                    for reading in history
+                    if reading.id is not None and not reading.ignored
+                }
+            )
+        finally:
+            db.close()
+
+        return render_template(
+            "readings.html",
+            printers=printers,
+            printer_by_id={printer.id: printer for printer in printers},
+            readings=history,
+            delta_by_id=delta_by_id,
+            selected_printer_id=selected_printer_id,
+            default_datetime=datetime.now(display_timezone).strftime("%Y-%m-%dT%H:%M"),
+        )
+
+    @app.route("/readings/add", methods=["POST"])
+    def readings_add() -> Response:
+        printer_id = _parse_int(request.form.get("printer_id"))
+        total_counter = _parse_int(request.form.get("total_counter"))
+        collected_at_raw = (request.form.get("collected_at") or "").strip()
+        db = open_db()
+        try:
+            printer = db.get_printer(printer_id) if printer_id is not None else None
+            if printer is None:
+                raise ValueError("Selecione uma impressora cadastrada.")
+            if total_counter is None or total_counter < 0:
+                raise ValueError("Informe um contador inteiro igual ou maior que zero.")
+            try:
+                local_moment = datetime.fromisoformat(collected_at_raw)
+            except ValueError as exc:
+                raise ValueError("Informe uma data e hora validas.") from exc
+            if local_moment.tzinfo is None:
+                local_moment = local_moment.replace(tzinfo=display_timezone)
+            collected_at = local_moment.astimezone(UTC)
+            if collected_at > datetime.now(UTC) + timedelta(minutes=5):
+                raise ValueError("A leitura não pode estar no futuro.")
+            db.add_reading(
+                printer.id,
+                total_counter,
+                collected_at=collected_at,
+                source="manual",
+            )
+        except ValueError as exc:
+            flash(str(exc), "erro")
+        else:
+            flash(
+                "Leitura histórica salva. O relatório mensal foi recalculado.",
+                "ok",
+            )
+        finally:
+            db.close()
+        return redirect(url_for("readings_view"))
+
+    @app.route("/readings/<int:reading_id>/ignore", methods=["POST"])
+    def readings_ignore(reading_id: int) -> Response:
+        reason = request.form.get("reason")
+        db = open_db()
+        try:
+            changed = db.ignore_reading(reading_id, reason)
+        finally:
+            db.close()
+        flash(
+            "Leitura retirada dos cálculos. Você pode restaurá-la no histórico."
+            if changed
+            else "Leitura não encontrada ou já estava ignorada.",
+            "ok" if changed else "erro",
+        )
+        if request.form.get("return_to") == "dashboard":
+            params: dict[str, object] = {}
+            year = _parse_int(request.form.get("year"))
+            month = _parse_int(request.form.get("month"))
+            printer_id = _parse_int(request.form.get("printer_id"))
+            if year and 1 <= year <= 9999:
+                params["year"] = year
+            if month and 1 <= month <= 12:
+                params["month"] = month
+            if printer_id is not None:
+                params["printer_id"] = printer_id
+            for key in ("ip", "location"):
+                value = (request.form.get(key) or "").strip()
+                if value:
+                    params[key] = value
+            return redirect(url_for("index", **params))
+        history_printer_id = _parse_int(request.form.get("history_printer_id"))
+        return redirect(
+            url_for(
+                "readings_view",
+                **({"printer_id": history_printer_id} if history_printer_id is not None else {}),
+            )
+        )
+
+    @app.route("/readings/<int:reading_id>/restore", methods=["POST"])
+    def readings_restore(reading_id: int) -> Response:
+        db = open_db()
+        try:
+            changed = db.restore_reading(reading_id)
+        finally:
+            db.close()
+        flash(
+            "Leitura restaurada e incluída novamente nos cálculos."
+            if changed
+            else "A leitura não estava ignorada.",
+            "ok" if changed else "erro",
+        )
+        history_printer_id = _parse_int(request.form.get("history_printer_id"))
+        return redirect(
+            url_for(
+                "readings_view",
+                **({"printer_id": history_printer_id} if history_printer_id is not None else {}),
+            )
+        )
+
+    # -- impressoras -----------------------------------------------------
 
     @app.route("/printers")
     def printers_view() -> str:
@@ -164,31 +416,6 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         finally:
             db.close()
         return render_template("printers.html", printers=printers)
-
-    @app.route("/export.csv")
-    def export_csv() -> Response:
-        f = read_filters()
-        db = open_db()
-        try:
-            report = monthly_report(
-                db,
-                f["year"],
-                f["month"],
-                printer_id=f["printer_id"],
-                ip=f["ip"] or None,
-                location=f["location"] or None,
-            )
-        finally:
-            db.close()
-        csv_text = report_to_csv(report, f["year"], f["month"])
-        filename = f"relatorio-{f['year']}-{f['month']:02d}.csv"
-        return Response(
-            csv_text,
-            mimetype="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
-        )
-
-    # -- gestao (acoes) ----------------------------------------------------
 
     @app.route("/printers/add", methods=["POST"])
     def printers_add() -> Response:
@@ -222,10 +449,27 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         finally:
             db.close()
         flash(
-            f"Importadas: {result.added}; ja cadastradas: {result.skipped}; "
+            f"Importadas: {result.added}; já cadastradas: {result.skipped}; "
             f"com erro: {len(result.errors)}.",
             "ok" if not result.errors else "erro",
         )
+        return redirect(url_for("printers_view"))
+
+    @app.route("/printers/<int:printer_id>/toggle", methods=["POST"])
+    def printers_toggle(printer_id: int) -> Response:
+        active = request.form.get("active") == "1"
+        db = open_db()
+        try:
+            changed = db.set_printer_active(printer_id, active)
+        finally:
+            db.close()
+        if changed:
+            flash(
+                "Coleta reativada." if active else "Coleta pausada; o histórico foi preservado.",
+                "ok",
+            )
+        else:
+            flash("Impressora não encontrada.", "erro")
         return redirect(url_for("printers_view"))
 
     @app.route("/printers/<int:printer_id>/delete", methods=["POST"])
@@ -234,44 +478,104 @@ def create_app(db_path: str | Path | None = None) -> Flask:
         try:
             removed = db.delete_printer(printer_id)
             flash(
-                "Impressora removida." if removed else "Impressora nao encontrada.",
+                "Impressora e histórico removidos." if removed else "Impressora não encontrada.",
                 "ok" if removed else "erro",
             )
         finally:
             db.close()
         return redirect(url_for("printers_view"))
 
+    # -- coleta ----------------------------------------------------------
+
     @app.route("/collect", methods=["POST"])
     def collect() -> Response:
-        backend_name = request.form.get("backend") or app.config["DEFAULT_BACKEND"]
+        backend_name = (
+            "mock"
+            if request.form.get("use_mock") == "1"
+            else request.form.get("backend") or app.config["DEFAULT_BACKEND"]
+        )
         try:
             backend, source = make_backend(config, override=backend_name)
         except ValueError as exc:
             flash(str(exc), "erro")
             return redirect(url_for("index"))
+
         db = open_db()
         try:
-            if not db.list_printers(only_active=True):
+            active_printers = db.list_printers(only_active=True)
+            if not active_printers:
                 flash(
                     "Cadastre ou descubra ao menos uma impressora ativa antes de coletar.",
                     "erro",
                 )
                 return redirect(url_for("printers_view"))
+            printer_by_id = {printer.id: printer for printer in active_printers}
+            previous_by_printer = {reading.printer_id: reading for reading in db.latest_readings()}
             outcome = Collector(db, backend, source=source).collect_all(
                 workers=config.collection_workers
             )
         finally:
             db.close()
+
         if outcome.readings:
-            flash(
-                f"{len(outcome.readings)} leitura(s) salva(s) via {source}. "
-                "O volume é calculado pela diferença entre leituras.",
-                "ok",
-            )
+            deltas: list[int] = []
+            for reading in outcome.readings:
+                previous = previous_by_printer.get(reading.printer_id)
+                if previous is not None:
+                    delta = reading.total_counter - previous.total_counter
+                    if delta >= 0:
+                        deltas.append(delta)
+            if len(outcome.readings) == 1:
+                reading = outcome.readings[0]
+                printer = printer_by_id.get(reading.printer_id)
+                previous = previous_by_printer.get(reading.printer_id)
+                if previous is None:
+                    detail = (
+                        f"Linha de base criada: contador acumulado "
+                        f"{_number_pt(reading.total_counter)}."
+                    )
+                else:
+                    delta = reading.total_counter - previous.total_counter
+                    if delta > 0:
+                        page_word = "página" if delta == 1 else "páginas"
+                        detail = (
+                            f"Contador atual {_number_pt(reading.total_counter)}; "
+                            f"{_number_pt(delta)} {page_word} desde a leitura anterior."
+                        )
+                    elif delta == 0:
+                        detail = (
+                            f"Contador {_number_pt(reading.total_counter)}, sem alteração "
+                            "desde a leitura anterior."
+                        )
+                    else:
+                        detail = (
+                            f"Contador atual {_number_pt(reading.total_counter)}. "
+                            "Ele diminuiu; verifique se houve reset ou troca do equipamento."
+                        )
+                flash(
+                    f"Coleta concluída em {printer.name if printer else '1 impressora'}. {detail}",
+                    "ok",
+                )
+            else:
+                flash(
+                    f"Coleta concluída: {len(outcome.readings)} leitura(s) salva(s). "
+                    f"Variação positiva desde a coleta anterior: {_number_pt(sum(deltas))}.",
+                    "ok",
+                )
         if outcome.failures:
-            detalhes = "; ".join(f"{p.ip}: {err}" for p, err in outcome.failures[:5])
-            flash(f"{len(outcome.failures)} falha(s). {detalhes}", "erro")
-        return redirect(url_for("index"))
+            details = "; ".join(f"{printer.ip}: {error}" for printer, error in outcome.failures[:5])
+            flash(f"{len(outcome.failures)} falha(s). {details}", "erro")
+
+        year = _parse_int(request.form.get("year"))
+        month = _parse_int(request.form.get("month"))
+        redirect_params = {}
+        if year and 1 <= year <= 9999:
+            redirect_params["year"] = year
+        if month and 1 <= month <= 12:
+            redirect_params["month"] = month
+        return redirect(url_for("index", **redirect_params))
+
+    # -- descoberta ------------------------------------------------------
 
     @app.route("/discover", methods=["GET", "POST"])
     def discover_view() -> str:
@@ -291,7 +595,7 @@ def create_app(db_path: str | Path | None = None) -> Flask:
             params["max_hosts"] = _parse_int(request.form.get("max_hosts"), 1024)
             try:
                 ports = (
-                    tuple(int(p) for p in params["ports"].split(",") if p.strip())
+                    tuple(int(port) for port in params["ports"].split(",") if port.strip())
                     or DEFAULT_PRINTER_PORTS
                 )
                 results = discover(
@@ -309,15 +613,19 @@ def create_app(db_path: str | Path | None = None) -> Flask:
                     db = open_db()
                     added = 0
                     try:
-                        for d in results:
-                            if db.get_printer_by_ip(d.ip) is None:
-                                register_printer(db, name=f"Impressora {d.ip}", ip=d.ip)
+                        for discovered in results:
+                            if db.get_printer_by_ip(discovered.ip) is None:
+                                register_printer(
+                                    db,
+                                    name=f"Impressora {discovered.ip}",
+                                    ip=discovered.ip,
+                                )
                                 added += 1
                     finally:
                         db.close()
                     flash(f"{added} impressora(s) cadastrada(s).", "ok")
                 elif not results:
-                    flash("Nenhum host com portas de impressao encontrado.", "ok")
+                    flash("Nenhum host com portas de impressão encontrado.", "ok")
         return render_template("discover.html", results=results, params=params)
 
     return app

@@ -1,78 +1,132 @@
 {% extends "base.html" %}
-{% block title %}Impressoras — print-monitor-local{% endblock %}
+{% block title %}Impressoras — Print Monitor{% endblock %}
 {% block content %}
 
-<section class="panel">
-  <h2>Importar de planilha (CSV)</h2>
-  <form method="post" action="/printers/import" enctype="multipart/form-data"
-        style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <input type="file" name="file" accept=".csv" required>
-    <button type="submit">Importar CSV</button>
-    <span class="muted">Colunas reconhecidas: SETOR, MARCA, MODELO, IP, N° SÉRIE (separador , ou ;). IPs já cadastrados são ignorados.</span>
-  </form>
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">Configuração</span>
+    <h1>Impressoras</h1>
+    <p>Cadastre equipamentos e controle quais deles participam das próximas coletas.</p>
+  </div>
+  <a class="btn btn-outline" href="/discover">Descobrir na rede</a>
 </section>
 
-<section class="panel">
-  <h2>Cadastrar impressora</h2>
-  <form method="post" action="/printers/add">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="grid">
+<div class="two-column">
+  <section class="panel">
+    <div class="section-heading">
       <div>
-        <label for="name">Nome *</label>
-        <input type="text" id="name" name="name" required placeholder="HP Andar 1">
-      </div>
-      <div>
-        <label for="ip">IP *</label>
-        <input type="text" id="ip" name="ip" required placeholder="192.168.0.50">
-      </div>
-      <div>
-        <label for="location">Local/Setor</label>
-        <input type="text" id="location" name="location" placeholder="Financeiro">
-      </div>
-      <div>
-        <label for="model">Modelo</label>
-        <input type="text" id="model" name="model" placeholder="HP M404">
-      </div>
-      <div>
-        <label for="serial">Número de série</label>
-        <input type="text" id="serial" name="serial" placeholder="opcional">
+        <span class="eyebrow">Cadastro rápido</span>
+        <h2>Adicionar por IP</h2>
       </div>
     </div>
-    <div style="margin-top:12px">
-      <button type="submit">Cadastrar</button>
+    <form class="stack-form" method="post" action="/printers/add">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="grid">
+        <div>
+          <label for="name">Nome *</label>
+          <input type="text" id="name" name="name" required placeholder="Impressora do setor">
+        </div>
+        <div>
+          <label for="ip">IP *</label>
+          <input type="text" id="ip" name="ip" required placeholder="Ex.: 192.168.1.50">
+        </div>
+        <div>
+          <label for="location">Local ou setor</label>
+          <input type="text" id="location" name="location" placeholder="Ex.: Administrativo">
+        </div>
+        <div>
+          <label for="model">Modelo</label>
+          <input type="text" id="model" name="model" placeholder="Opcional">
+        </div>
+        <div>
+          <label for="serial">Número de série</label>
+          <input type="text" id="serial" name="serial" placeholder="Opcional">
+        </div>
+      </div>
+      <button type="submit">Cadastrar impressora</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">Importação</span>
+        <h2>Adicionar por CSV</h2>
+      </div>
     </div>
-  </form>
-</section>
+    <p class="panel-intro">
+      Colunas reconhecidas: setor, marca, modelo, IP e número de série. IPs já
+      cadastrados são ignorados.
+    </p>
+    <form class="upload-form" method="post" action="/printers/import"
+          enctype="multipart/form-data">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="file" accept=".csv" required>
+      <button type="submit">Importar arquivo</button>
+    </form>
+  </section>
+</div>
 
 <section class="panel">
-  <h2>Impressoras cadastradas</h2>
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Equipamentos</span>
+      <h2>Impressoras cadastradas</h2>
+    </div>
+    <span class="section-note">Pausar preserva todo o histórico.</span>
+  </div>
   {% if printers %}
-  <table>
-    <thead>
-      <tr><th>ID</th><th>Nome</th><th>IP</th><th>Local</th><th>Modelo</th><th>Ativa</th><th></th></tr>
-    </thead>
-    <tbody>
-      {% for p in printers %}
-      <tr>
-        <td>{{ p.id }}</td>
-        <td>{{ p.name }}</td>
-        <td>{{ p.ip }}</td>
-        <td>{{ p.location or "-" }}</td>
-        <td>{{ p.model or "-" }}</td>
-        <td>{{ "Sim" if p.active else "Não" }}</td>
-        <td>
-          <form class="inline" method="post" action="/printers/{{ p.id }}/delete">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="danger">Remover</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Impressora</th>
+          <th>IP</th>
+          <th>Local</th>
+          <th>Modelo</th>
+          <th>Status</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for printer in printers %}
+        <tr>
+          <td><strong>{{ printer.name }}</strong></td>
+          <td>{{ printer.ip }}</td>
+          <td>{{ printer.location or "—" }}</td>
+          <td>{{ printer.model or "—" }}</td>
+          <td>
+            {% if printer.active %}
+              <span class="badge badge-success">Coleta ativa</span>
+            {% else %}
+              <span class="badge badge-neutral">Pausada</span>
+            {% endif %}
+          </td>
+          <td>
+            <form class="inline-form" method="post" action="/printers/{{ printer.id }}/toggle">
+              <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="active" value="{{ 0 if printer.active else 1 }}">
+              <button class="btn-link" type="submit">
+                {{ "Pausar coleta" if printer.active else "Reativar coleta" }}
+              </button>
+            </form>
+            <details class="danger-zone">
+              <summary>Exclusão permanente</summary>
+              <p>Remove também todas as leituras desta impressora.</p>
+              <form method="post" action="/printers/{{ printer.id }}/delete"
+                    data-confirm="Excluir permanentemente esta impressora e todo o histórico? Esta ação não pode ser desfeita.">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button class="btn-danger" type="submit">Excluir definitivamente</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <p class="empty">Nenhuma impressora cadastrada. Use o formulário acima.</p>
+    <p class="empty">Nenhuma impressora cadastrada.</p>
   {% endif %}
 </section>
 

@@ -2,8 +2,21 @@
 {% block title %}Descobrir — print-monitor-local{% endblock %}
 {% block content %}
 
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">Busca autorizada</span>
+    <h1>Descobrir impressoras</h1>
+    <p>Procure equipamentos em uma faixa específica da sua rede local.</p>
+  </div>
+</section>
+
 <section class="panel">
-  <h2>Descobrir impressoras na rede</h2>
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Faixa de rede</span>
+      <h2>Configurar busca</h2>
+    </div>
+  </div>
   <form method="post" action="/discover">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="grid">
@@ -21,17 +34,17 @@
         <input type="number" id="max_hosts" name="max_hosts" value="{{ params.max_hosts }}" min="1">
       </div>
     </div>
-    <div style="margin-top:12px; display:flex; gap:18px; align-items:center; flex-wrap:wrap">
-      <label style="display:flex; gap:6px; align-items:center; margin:0">
+    <div class="check-actions">
+      <label class="check-row">
         <input type="checkbox" name="snmp" {% if params.snmp %}checked{% endif %}> Confirmar via SNMP (lê contador)
       </label>
-      <label style="display:flex; gap:6px; align-items:center; margin:0">
+      <label class="check-row">
         <input type="checkbox" name="register" {% if params.register %}checked{% endif %}> Cadastrar encontrados
       </label>
       <button type="submit">Procurar</button>
     </div>
   </form>
-  <p class="muted" style="margin-top:10px">
+  <p class="panel-intro">
     Abordagem segura: faixa explícita, limite de hosts, timeouts curtos. Use
     apenas em redes autorizadas.
   </p>
@@ -39,7 +52,12 @@
 
 {% if results is not none %}
 <section class="panel">
-  <h2>Resultados</h2>
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Descoberta</span>
+      <h2>Resultados</h2>
+    </div>
+  </div>
   {% if results %}
   <table>
     <thead>

@@ -108,3 +108,19 @@ def test_collect_returns_the_exact_persisted_timestamp(db):
     persisted = db.list_readings(printer_id=printer_id)[0]
 
     assert reading.collected_at == persisted.collected_at
+
+
+class _InvalidCounterBackend:
+    def read_total_counter(self, printer: Printer) -> int:
+        return -1
+
+
+def test_collect_all_rejects_invalid_counter_without_persisting(db):
+    db.add_printer(name="P", ip="192.0.2.40")
+
+    outcome = Collector(db, _InvalidCounterBackend(), source="test").collect_all()
+
+    assert outcome.readings == []
+    assert len(outcome.failures) == 1
+    assert "Contador invalido" in outcome.failures[0][1]
+    assert db.list_readings() == []

@@ -23,7 +23,7 @@ def app_client(tmp_path):
     db.add_reading(pid, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
     db.close()
 
-    app = create_app(db_path=db_path)
+    app = create_app(db_path=db_path, local_timezone=UTC)
     app.config.update(TESTING=True, CSRF_ENABLED=False)
     return app.test_client()
 
@@ -33,9 +33,11 @@ def test_index_ok(app_client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Alfa" in body
-    assert "Dashboard" in body
+    assert "Visão mensal" in body
     assert "104.500" in body
-    assert "30/06/2026 00:00 UTC" in body
+    assert "30/06/2026 às 00:00" in body
+    assert "4.500" in body
+    assert "acumulado da vida útil" in body
 
 
 def test_index_default_loads(app_client):
@@ -53,6 +55,14 @@ def test_printers_view(app_client):
     resp = app_client.get("/printers")
     assert resp.status_code == 200
     assert "Alfa" in resp.get_data(as_text=True)
+
+
+def test_static_assets_are_served(app_client):
+    css = app_client.get("/static/app.css")
+    javascript = app_client.get("/static/app.js")
+    assert css.status_code == 200
+    assert css.mimetype == "text/css"
+    assert javascript.status_code == 200
 
 
 def test_export_csv(app_client):
@@ -82,7 +92,7 @@ def client_and_db(tmp_path):
     db = Database(db_path)
     db.initialize()
     db.close()
-    app = create_app(db_path=db_path)
+    app = create_app(db_path=db_path, local_timezone=UTC)
     app.config.update(TESTING=True, CSRF_ENABLED=False)
     return app.test_client(), db_path
 
@@ -127,6 +137,27 @@ def test_delete_printer_via_post(client_and_db):
     db.close()
 
 
+def test_pause_printer_preserves_history(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Pausar", ip="192.0.2.33")
+    db.add_reading(pid, 100, collected_at=datetime(2026, 7, 1, tzinfo=UTC))
+    db.close()
+
+    response = client.post(
+        f"/printers/{pid}/toggle",
+        data={"active": "0"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    db = Database(db_path)
+    printer = db.get_printer(pid)
+    assert printer is not None and printer.active is False
+    assert len(db.list_readings(pid)) == 1
+    db.close()
+
+
 def test_collect_mock_via_post(client_and_db):
     client, db_path = client_and_db
     db = Database(db_path)
@@ -135,8 +166,8 @@ def test_collect_mock_via_post(client_and_db):
     resp = client.post("/collect", data={"backend": "mock"}, follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "1 leitura(s) salva(s) via mock" in body
-    assert "Último contador" in body
+    assert "Coleta concluída em Coletar" in body
+    assert "Linha de base criada" in body
     db = Database(db_path)
     assert len(db.list_readings()) == 1
     counter = db.list_readings()[0].total_counter
@@ -147,10 +178,124 @@ def test_collect_mock_via_post(client_and_db):
 def test_empty_dashboard_guides_registration(client_and_db):
     client, _ = client_and_db
     body = client.get("/").get_data(as_text=True)
-    assert "Nenhuma impressora ativa cadastrada" in body
-    assert "Cadastrar por IP" in body
+    assert "Nenhuma impressora ativa" in body
+    assert "Cadastrar impressora" in body
     assert "Descobrir na rede" in body
-    assert "Coletar agora" not in body
+    assert "Atualizar contadores" not in body
+
+
+def test_single_reading_is_shown_as_waiting_not_monthly_zero(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Alfa", ip="192.0.2.31")
+    db.add_reading(pid, 129_999, collected_at=datetime(2026, 7, 15, tzinfo=UTC))
+    db.close()
+
+    body = client.get("/?year=2026&month=7").get_data(as_text=True)
+
+    assert "129.999" in body
+    assert "Aguardando comparação" in body
+    assert "O contador acumulado não é o total do mês" in body
+
+
+def test_manual_reading_and_ignore_restore_flow(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Alfa", ip="192.0.2.32")
+    db.close()
+
+    response = client.post(
+        "/readings/add",
+        data={
+            "printer_id": str(pid),
+            "total_counter": "740000",
+            "collected_at": "2026-07-01T00:00",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "Leitura histórica salva" in response.get_data(as_text=True)
+
+    db = Database(db_path)
+    reading = db.list_readings(pid)[0]
+    db.close()
+
+    response = client.post(
+        f"/readings/{reading.id}/ignore",
+        data={"reason": "correcao"},
+        follow_redirects=True,
+    )
+    assert "Leitura retirada dos cálculos" in response.get_data(as_text=True)
+
+    response = client.post(
+        f"/readings/{reading.id}/restore",
+        follow_redirects=True,
+    )
+    assert "Leitura restaurada" in response.get_data(as_text=True)
+
+
+def test_month_navigation_preserves_active_filters(app_client):
+    body = app_client.get("/?year=2026&month=6&printer_id=1&location=Financeiro").get_data(
+        as_text=True
+    )
+    assert "/?year=2026&amp;month=5&amp;printer_id=1&amp;location=Financeiro" in body
+
+
+def test_dashboard_uses_configured_backend(app_client):
+    app_client.application.config["DEFAULT_BACKEND"] = "mock"
+    body = app_client.get("/?year=2026&month=6").get_data(as_text=True)
+    assert 'name="backend" value="mock"' in body
+
+
+def test_ignore_redirect_preserves_dashboard_context(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    db.initialize()
+    pid = db.add_printer(name="Contexto", ip="192.0.2.40", location="Arquivo")
+    reading_id = db.add_reading(
+        pid,
+        123_000,
+        collected_at=datetime(2026, 7, 15, tzinfo=UTC),
+    )
+    db.close()
+
+    response = client.post(
+        f"/readings/{reading_id}/ignore",
+        data={
+            "return_to": "dashboard",
+            "year": "2026",
+            "month": "7",
+            "printer_id": str(pid),
+            "location": "Arquivo",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(
+        f"/?year=2026&month=7&printer_id={pid}&location=Arquivo"
+    )
+
+
+def test_restore_redirect_preserves_history_filter(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    db.initialize()
+    pid = db.add_printer(name="Contexto", ip="192.0.2.41")
+    reading_id = db.add_reading(
+        pid,
+        123_000,
+        collected_at=datetime(2026, 7, 15, tzinfo=UTC),
+    )
+    db.ignore_reading(reading_id, "teste")
+    db.close()
+
+    response = client.post(
+        f"/readings/{reading_id}/restore",
+        data={"history_printer_id": str(pid)},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/readings?printer_id={pid}")
 
 
 def test_collect_without_printers_redirects_to_registration(client_and_db):
@@ -192,8 +337,7 @@ def test_import_printers_via_upload(client_and_db):
 
     client, db_path = client_and_db
     csv_bytes = (
-        "SETOR;MARCA;MODELO;IP;N° SÉRIE\n"
-        "FINANCEIRO;EXEMPLO;MODELO-X;192.0.2.80;TEST-SERIAL-001\n"
+        "SETOR;MARCA;MODELO;IP;N° SÉRIE\nFINANCEIRO;EXEMPLO;MODELO-X;192.0.2.80;TEST-SERIAL-001\n"
     ).encode()
     resp = client.post(
         "/printers/import",
@@ -241,3 +385,11 @@ def test_security_headers_are_present(app_client):
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+
+def test_non_local_host_header_is_rejected_without_session(app_client):
+    response = app_client.get("/printers", headers={"Host": "attacker.example:5000"})
+
+    assert response.status_code == 400
+    assert "_csrf_token" not in response.get_data(as_text=True)
+    assert "Set-Cookie" not in response.headers

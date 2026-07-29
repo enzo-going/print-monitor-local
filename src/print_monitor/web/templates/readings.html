@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Histórico — Print Monitor{% endblock %}
+{% block content %}
+
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">Auditoria e correção</span>
+    <h1>Histórico de leituras</h1>
+    <p>
+      Confira cada contador usado nos relatórios. Uma leitura incorreta pode ser ignorada
+      sem ser apagada e restaurada depois.
+    </p>
+  </div>
+  <a class="btn btn-outline" href="/">Voltar à visão mensal</a>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Linha de base</span>
+      <h2>Informar uma leitura histórica</h2>
+    </div>
+    <span class="section-note">Use somente um contador e uma data que você conferiu.</span>
+  </div>
+  <p class="panel-intro">
+    Isto é útil quando você possui o contador do início do mês. O sistema não inventa
+    o histórico: ele calcula apenas a diferença entre valores conhecidos.
+  </p>
+  {% if printers %}
+  <form class="history-form" method="post" action="/readings/add">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label for="printer_id">Impressora</label>
+      <select id="printer_id" name="printer_id" required>
+        <option value="">Selecione</option>
+        {% for printer in printers %}
+          <option value="{{ printer.id }}">{{ printer.name }} — {{ printer.ip }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="total_counter">Contador acumulado</label>
+      <input type="number" id="total_counter" name="total_counter" min="0" step="1" required
+             placeholder="Ex.: 125000">
+    </div>
+    <div>
+      <label for="collected_at">Data e hora local</label>
+      <input type="datetime-local" id="collected_at" name="collected_at"
+             value="{{ default_datetime }}" required>
+    </div>
+    <button type="submit">Salvar leitura histórica</button>
+  </form>
+  {% else %}
+    <div class="notice notice-warning">
+      <div>
+        <strong>Cadastre uma impressora primeiro.</strong>
+        <p>A leitura precisa estar vinculada a um equipamento.</p>
+      </div>
+      <a class="btn" href="/printers">Cadastrar</a>
+    </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Últimos registros</span>
+      <h2>Leituras salvas</h2>
+    </div>
+    <form class="compact-filter" method="get" action="/readings">
+      <label for="history_printer">Mostrar</label>
+      <select id="history_printer" name="printer_id">
+        <option value="">Todas as impressoras</option>
+        {% for printer in printers %}
+          <option value="{{ printer.id }}" {% if printer.id == selected_printer_id %}selected{% endif %}>
+            {{ printer.name }}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-quiet" type="submit">Filtrar</button>
+    </form>
+  </div>
+
+  {% if readings %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Impressora</th>
+          <th>Data local</th>
+          <th>Contador acumulado</th>
+          <th>Diferença anterior</th>
+          <th>Origem</th>
+          <th>Status e ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reading in readings %}
+        {% set printer = printer_by_id.get(reading.printer_id) %}
+        {% set delta = delta_by_id.get(reading.id) %}
+        <tr class="{% if reading.ignored %}is-ignored{% endif %}">
+          <td>
+            <strong>{{ printer.name if printer else "Impressora removida" }}</strong>
+            {% if printer %}<small>{{ printer.ip }}</small>{% endif %}
+          </td>
+          <td>{{ reading.collected_at | local_datetime }}</td>
+          <td><strong class="table-number">{{ reading.total_counter | number_pt }}</strong></td>
+          <td>
+            {% if reading.ignored %}
+              <span>—</span>
+            {% elif delta is none %}
+              <span class="muted">Linha de base</span>
+            {% elif delta >= 0 %}
+              <strong class="{% if delta > 0 %}positive{% endif %}">+{{ delta | number_pt }}</strong>
+            {% else %}
+              <span class="badge badge-danger">queda {{ delta | number_pt }}</span>
+            {% endif %}
+          </td>
+          <td>{{ source_labels.get(reading.source, reading.source) }}</td>
+          <td>
+            {% if reading.ignored %}
+              <span class="badge badge-neutral">Ignorada</span>
+              {% if reading.ignore_reason %}<small>{{ reading.ignore_reason }}</small>{% endif %}
+              <form class="inline-form" method="post" action="/readings/{{ reading.id }}/restore">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                {% if selected_printer_id %}
+                  <input type="hidden" name="history_printer_id" value="{{ selected_printer_id }}">
+                {% endif %}
+                <button class="btn-link" type="submit">Restaurar</button>
+              </form>
+            {% else %}
+              <form class="correction-form" method="post" action="/readings/{{ reading.id }}/ignore"
+                    data-confirm="Retirar esta leitura dos cálculos? Ela poderá ser restaurada depois.">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                {% if selected_printer_id %}
+                  <input type="hidden" name="history_printer_id" value="{{ selected_printer_id }}">
+                {% endif %}
+                <input type="text" name="reason" maxlength="300"
+                       placeholder="Motivo opcional">
+                <button class="btn-link-danger" type="submit">Ignorar no cálculo</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-footnote">São exibidas até 100 leituras mais recentes.</p>
+  {% else %}
+    <p class="empty">Nenhuma leitura encontrada para este filtro.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
