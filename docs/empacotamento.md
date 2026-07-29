@@ -12,13 +12,13 @@ produzindo um único arquivo `dist\print-monitor.exe`.
 O script:
 
 1. cria um ambiente virtual isolado (`.build-venv`) com apenas as dependências
-   necessárias (Flask), evitando que pacotes não relacionados do Python global
-   entrem no pacote e mantendo o executável enxuto;
+   necessárias (Flask e pywebview), evitando que pacotes não relacionados do
+   Python global entrem no pacote;
 2. instala o PyInstaller nesse ambiente;
-3. empacota em arquivo único, incluindo os templates do dashboard
-   (`--add-data`).
+3. empacota em arquivo único, incluindo templates, CSS e JavaScript do
+   dashboard (`--add-data`).
 
-Resultado: `dist\print-monitor.exe` (aproximadamente 12 MB).
+Resultado: `dist\print-monitor.exe`.
 
 ## Banco de dados fora do executável
 
@@ -41,9 +41,34 @@ dist\print-monitor.exe add-printer --name "HP 1" --ip 192.168.0.50
 dist\print-monitor.exe collect --all
 dist\print-monitor.exe report --year 2026 --month 6
 
-# Duplo clique no .exe (sem argumentos): inicia o dashboard e abre o navegador
+# Duplo clique no .exe (sem argumentos): abre o dashboard em uma janela nativa
 dist\print-monitor.exe
 ```
+
+## Atualização segura
+
+O histórico não fica dentro do executável. Ao instalar uma nova versão,
+substitua somente o `.exe` e preserve `data\print_monitor.db` e o `.env`.
+
+Exemplo com uma pasta de instalação genérica:
+
+```powershell
+$installDir = "C:\PrintMonitor"
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$backupDir = Join-Path $installDir "backup\$stamp"
+
+# Feche a janela do aplicativo antes de copiar os arquivos.
+New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+Copy-Item (Join-Path $installDir "data\print_monitor.db") $backupDir
+if (Test-Path (Join-Path $installDir ".env")) {
+    Copy-Item (Join-Path $installDir ".env") $backupDir
+}
+
+Copy-Item ".\dist\print-monitor.exe" $installDir -Force
+```
+
+Depois da atualização, abra o aplicativo e confira a visão mensal e o
+histórico. Se houver problema, feche-o e restaure o banco salvo no backup.
 
 ## Verificação
 
@@ -51,8 +76,8 @@ A execução foi validada de duas formas:
 
 - via Python (`python -m print_monitor ...` e `python -m pytest`);
 - via executável (`dist\print-monitor.exe`): CLI (`--help`, `init`,
-  `add-printer`, `collect`, `report`) e dashboard (`/`, `/printers`,
-  `/export.csv` respondendo 200).
+  `add-printer`, `collect`, `report`) e dashboard (`/`, `/readings`,
+  `/printers`, `/static/app.css` e `/export.csv` respondendo 200).
 
 ## Observações
 

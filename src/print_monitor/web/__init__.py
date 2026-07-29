@@ -474,6 +474,12 @@ def create_app(
 
     @app.route("/printers/<int:printer_id>/delete", methods=["POST"])
     def printers_delete(printer_id: int) -> Response:
+        if request.form.get("delete_confirmation") != str(printer_id):
+            flash(
+                "Confirme que todo o histórico será apagado antes de excluir.",
+                "erro",
+            )
+            return redirect(url_for("printers_view"))
         db = open_db()
         try:
             removed = db.delete_printer(printer_id)
