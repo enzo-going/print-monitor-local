@@ -125,15 +125,60 @@ def test_add_printer_invalid_ip_flashes_error(client_and_db):
     db.close()
 
 
-def test_delete_printer_via_post(client_and_db):
+def test_delete_printer_requires_explicit_confirmation(client_and_db):
     client, db_path = client_and_db
     db = Database(db_path)
     pid = db.add_printer(name="ApagarMe", ip="192.168.5.9")
+    reading_id = db.add_reading(pid, 100)
     db.close()
     resp = client.post(f"/printers/{pid}/delete", follow_redirects=True)
     assert resp.status_code == 200
+    assert "Confirme que todo o histórico será apagado" in resp.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.get_printer(pid) is not None
+    assert db.get_reading(reading_id) is not None
+    db.close()
+
+
+def test_delete_printer_with_valid_confirmation_removes_history(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="ApagarMe", ip="192.168.5.9")
+    reading_id = db.add_reading(pid, 100)
+    db.close()
+
+    resp = client.post(
+        f"/printers/{pid}/delete",
+        data={"delete_confirmation": str(pid)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
     db = Database(db_path)
     assert db.get_printer(pid) is None
+    assert db.get_reading(reading_id) is None
+    db.close()
+
+
+def test_delete_printer_rejects_confirmation_for_another_id(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Preservar", ip="192.168.5.9")
+    other_id = db.add_printer(name="Outra", ip="192.168.5.10")
+    reading_id = db.add_reading(pid, 100)
+    db.close()
+
+    resp = client.post(
+        f"/printers/{pid}/delete",
+        data={"delete_confirmation": str(other_id)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Confirme que todo o histórico será apagado" in resp.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.get_printer(pid) is not None
+    assert db.get_reading(reading_id) is not None
     db.close()
 
 

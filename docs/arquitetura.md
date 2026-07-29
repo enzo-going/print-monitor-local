@@ -25,8 +25,8 @@ impressão por período a partir das diferenças entre leituras.
 | `db.py`        | Esquema e operações SQLite; (de)serialização de datas (UTC). |
 | `printers.py`  | Validação de IP e cadastro sem duplicidade.                  |
 | `collector.py` | Interface de backend, `MockBackend` e orquestração da coleta.|
-| `snmp.py`      | Backend SNMP real (Fase 3) e OIDs de contador total.        |
-| `discovery.py` | Descoberta segura de impressoras na rede (Fase 4).          |
+| `snmp.py`      | Backend SNMP real e OIDs de contador total.                 |
+| `discovery.py` | Descoberta segura de impressoras na rede.                   |
 | `reports.py`   | Cálculo de volume por período/mês, filtros e ranking.        |
 | `exports.py`   | Serialização de relatórios para CSV.                        |
 | `web/`         | Dashboard local (Flask): rotas, templates e exportação CSV. |
@@ -40,17 +40,32 @@ impressão por período a partir das diferenças entre leituras.
 **readings**: `id`, `printer_id` (FK, cascade), `total_counter`, `collected_at`
 (ISO 8601 UTC), `source` (`manual` | `mock` | `seed` | `snmp`).
 
-Índice em `readings(printer_id, collected_at)` para consultas por período.
+**reading_ignores**: `reading_id` (PK/FK), `ignored_at`, `reason`. A tabela
+permite retirar uma leitura dos cálculos sem apagar o registro original.
+
+Índices em `readings(printer_id, collected_at)` e
+`readings(collected_at, printer_id)` aceleram histórico, linha de base e
+relatórios por período.
 
 ## Cálculo do volume
 
 O contador da impressora é cumulativo. Para um intervalo `[início, fim]`:
 
-1. selecionam-se as leituras dentro do intervalo, ordenadas por tempo;
-2. somam-se as diferenças **positivas** entre leituras consecutivas;
-3. diferenças negativas (reset/troca de contador) são descartadas.
+1. selecionam-se as leituras válidas dentro do intervalo e a última leitura
+   válida anterior ao início, usada como linha de base;
+2. os pontos são ordenados por data e identificador;
+3. somam-se as diferenças **positivas** entre leituras consecutivas;
+4. uma diferença negativa sinaliza reset ou troca de equipamento e torna o
+   resultado não mensurável até a revisão do histórico.
 
-Com 0 ou 1 leitura no intervalo, o volume é 0 — não há base de comparação.
+Uma leitura isolada não é apresentada como zero confirmado: o estado fica
+`waiting_baseline`. Duas leituras iguais produzem um zero realmente medido
+(`no_increase`). Quando a linha de base antecede a abertura do mês, o volume é
+mostrado como cobertura parcial e acompanhado das datas efetivamente
+observadas.
+
+Os limites mensais são calculados no fuso local do computador e convertidos
+para UTC antes da consulta. As datas continuam armazenadas em UTC.
 
 ### Por que diferença de leituras
 
@@ -62,16 +77,19 @@ agendada), garantindo leituras próximas às bordas de cada mês.
 ## Decisões principais
 
 - **SQLite**: zero configuração, arquivo único, adequado a uso local.
-- **Backend plugável**: `MockBackend` na Fase 1; `SNMPBackend` na Fase 3,
-  mesma interface (`read_total_counter`), troca sem afetar o restante.
+- **Backend plugável**: `MockBackend` e `SNMPBackend` usam a mesma interface
+  (`read_total_counter`), permitindo testes sem afetar a coleta real.
 - **Cálculo puro**: funções de `reports.py` operam sobre listas de `Reading`,
   isoladas de I/O — fáceis de testar.
-- **UTC em tudo**: timestamps armazenados e comparados em UTC.
+- **UTC na persistência**: timestamps são armazenados em UTC e apresentados no
+  fuso local.
+- **Correção reversível**: leituras incorretas são ignoradas por referência, sem
+  destruir o histórico auditável.
 
-## Evolução planejada
+## Estado atual
 
-- **Fase 2**: dashboard Flask, filtros, ranking, exportação CSV.
-- **Fase 3**: coleta SNMP real com fallback mockado.
-- **Fase 4**: descoberta de impressoras na rede (abordagem segura, sem varredura
-  agressiva).
-- **Fase 5**: empacotamento Windows com PyInstaller, banco fora do executável.
+- Dashboard Flask local com relatório mensal, filtros, ranking, histórico e CSV.
+- Coleta SNMP real, backend simulado explícito para testes e execução concorrente.
+- Descoberta de impressoras com limites de faixa, timeout e concorrência.
+- Executável Windows em janela nativa, com banco e configuração fora do binário.
+- Proteções CSRF, validação de `Host`, limite de upload e cabeçalhos de segurança.
