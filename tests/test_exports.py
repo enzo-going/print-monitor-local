@@ -21,9 +21,69 @@ def test_csv_has_header_and_rows():
     text = report_to_csv(report, 2026, 6)
     rows = list(csv.reader(io.StringIO(text)))
     assert rows[0] == CSV_HEADER
-    assert rows[1] == ["1", "Alfa", "10.0.0.1", "Financeiro", "2026", "6", "4500"]
+    assert rows[1] == [
+        "1",
+        "Alfa",
+        "10.0.0.1",
+        "Financeiro",
+        "2026",
+        "6",
+        "4500",
+        "yes",
+        "measured",
+        "",
+        "",
+    ]
     # location None vira string vazia.
-    assert rows[2] == ["2", "Beta", "10.0.0.2", "", "2026", "6", "1000"]
+    assert rows[2] == [
+        "2",
+        "Beta",
+        "10.0.0.2",
+        "",
+        "2026",
+        "6",
+        "1000",
+        "yes",
+        "measured",
+        "",
+        "",
+    ]
+
+
+def test_csv_does_not_present_unmeasurable_volume_as_zero():
+    report = [
+        PrinterVolume(
+            printer_id=1,
+            name="Alfa",
+            ip="192.0.2.41",
+            location=None,
+            volume=0,
+            measurable=False,
+            state="waiting_baseline",
+        )
+    ]
+
+    rows = list(csv.reader(io.StringIO(report_to_csv(report, 2026, 7))))
+
+    assert rows[1][6] == ""
+    assert rows[1][7:9] == ["no", "waiting_baseline"]
+
+
+def test_csv_neutralizes_spreadsheet_formulas():
+    report = [
+        PrinterVolume(
+            printer_id=1,
+            name="=2+2",
+            ip="192.0.2.42",
+            location="+comando",
+            volume=10,
+        )
+    ]
+
+    rows = list(csv.reader(io.StringIO(report_to_csv(report, 2026, 7))))
+
+    assert rows[1][1] == "'=2+2"
+    assert rows[1][3] == "'+comando"
 
 
 def test_csv_empty_report_has_only_header():

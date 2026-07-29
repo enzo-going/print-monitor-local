@@ -3,92 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}print-monitor-local{% endblock %}</title>
-  <style>
-    :root {
-      --bg: #0f172a; --panel: #1e293b; --ink: #e2e8f0; --muted: #94a3b8;
-      --accent: #38bdf8; --border: #334155; --row: #172033;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif;
-      background: var(--bg); color: var(--ink); line-height: 1.5;
-    }
-    header {
-      background: var(--panel); border-bottom: 1px solid var(--border);
-      padding: 14px 24px; display: flex; gap: 24px; align-items: baseline;
-    }
-    header h1 { font-size: 18px; margin: 0; }
-    header nav a { color: var(--accent); text-decoration: none; margin-right: 16px; }
-    main { padding: 24px; max-width: 1080px; margin: 0 auto; }
-    .panel {
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: 10px; padding: 18px; margin-bottom: 22px;
-    }
-    h2 { font-size: 15px; color: var(--muted); text-transform: uppercase;
-         letter-spacing: .04em; margin: 0 0 14px; }
-    form.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
-    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-    input, select {
-      background: var(--row); color: var(--ink); border: 1px solid var(--border);
-      border-radius: 6px; padding: 8px 10px; font-size: 14px; min-width: 120px;
-    }
-    button {
-      background: var(--accent); color: #04293a; border: 0; border-radius: 6px;
-      padding: 9px 16px; font-weight: 600; cursor: pointer;
-    }
-    .btn-primary, .btn-secondary {
-      display: inline-block; border-radius: 6px; padding: 8px 14px;
-      text-decoration: none; font-weight: 600;
-    }
-    .btn-primary { background: var(--accent); color: #04293a; border: 1px solid var(--accent); }
-    .btn-secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-    table { width: 100%; border-collapse: collapse; }
-    .table-wrap { overflow-x: auto; }
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-    th { font-size: 12px; color: var(--muted); text-transform: uppercase; }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    tbody tr:hover { background: var(--row); }
-    .kpi { font-size: 30px; font-weight: 700; color: var(--accent); }
-    .muted { color: var(--muted); }
-    .empty { color: var(--muted); padding: 12px 0; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-    .status-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px;
-    }
-    .status-card {
-      background: var(--row); border: 1px solid var(--border); border-radius: 8px;
-      padding: 14px;
-    }
-    .status-value { color: var(--accent); font-size: 22px; font-weight: 700; }
-    .notice {
-      background: #422006; border: 1px solid #f59e0b; color: #fef3c7;
-      border-radius: 8px; padding: 14px;
-    }
-    .notice p { margin: 0 0 12px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; }
-    .flash.ok { background: #064e3b; color: #d1fae5; border: 1px solid #10b981; }
-    .flash.erro { background: #4c1d1d; color: #fecaca; border: 1px solid #ef4444; }
-    button.danger { background: #ef4444; color: #fff; padding: 6px 12px; }
-    form.inline { display: inline; }
-  </style>
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}Print Monitor{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 </head>
 <body>
-  <header>
-    <h1>print-monitor-local</h1>
-    <nav>
-      <a href="/">Dashboard</a>
-      <a href="/printers">Impressoras</a>
-      <a href="/discover">Descobrir</a>
+  <header class="app-header">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">PM</span>
+      <span>
+        <strong>Print Monitor</strong>
+        <small>controle local de impressão</small>
+      </span>
+    </a>
+    <nav aria-label="Navegação principal">
+      <a href="/" {% if request.endpoint == "index" %}class="active" aria-current="page"{% endif %}>
+        Visão mensal
+      </a>
+      <a href="/readings" {% if request.endpoint in ("readings_view", "readings_add") %}class="active" aria-current="page"{% endif %}>
+        Histórico
+      </a>
+      <a href="/printers" {% if request.endpoint and request.endpoint.startswith("printers") %}class="active" aria-current="page"{% endif %}>
+        Impressoras
+      </a>
+      <a href="/discover" {% if request.endpoint == "discover_view" %}class="active" aria-current="page"{% endif %}>
+        Descobrir
+      </a>
     </nav>
   </header>
+
   <main>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="flash {{ category }}">{{ message }}</div>
-      {% endfor %}
-    {% endwith %}
+    <div class="flash-stack" role="status" aria-live="polite">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+    </div>
     {% block content %}{% endblock %}
   </main>
 </body>

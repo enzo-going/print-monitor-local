@@ -15,7 +15,7 @@ pela **diferença entre leituras**.
 
 > Exemplo: contador `120000` em 01/06 e `124500` em 30/06 → **4500 impressões**.
 
-![Dashboard do print-monitor-local com total mensal, ranking e filtros](docs/assets/dashboard.png)
+![Dashboard do print-monitor-local com total mensal, ranking e filtros](docs/assets/dashboard.jpg)
 
 <sub>Dashboard local com dados fictícios de demonstração.</sub>
 
@@ -95,8 +95,10 @@ python -m print_monitor discover --network 192.168.0.0/24 --snmp
 ```
 
 > O dashboard exige o extra opcional `dashboard`: `pip install -e ".[dashboard]"`.
-> Ele oferece filtros por mês, impressora, IP e local, total mensal, ranking das
-> impressoras mais usadas e exportação CSV.
+> Ele separa claramente o **contador acumulado** da **produção mensal**, mostra
+> a cobertura observada, oferece histórico corrigível, filtros, ranking e CSV.
+> Como não possui login, o servidor aceita somente `localhost`/loopback e não
+> expõe os contadores e cadastros para outros computadores da rede.
 
 Para popular o banco com dados **fictícios** e ver relatórios imediatamente:
 
@@ -122,10 +124,11 @@ concorrência com `PRINT_MONITOR_WORKERS` ou `collect --workers`. O backend padr
 fabricante/modelo:
 [`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
 
-A primeira coleta salva o contador acumulado como **linha de base**. O volume
-permanece zero até uma leitura posterior registrar aumento nesse contador; o
-dashboard mostra o último contador e o horário da coleta para confirmar que a
-leitura foi salva.
+A primeira coleta salva o contador acumulado como **linha de base**. Enquanto
+não houver outro ponto para comparação, o painel mostra **“Aguardando
+comparação”**, em vez de apresentar um zero que ainda não pode ser comprovado.
+O histórico permite informar um contador anterior confiável e retirar uma
+leitura incorreta dos cálculos sem apagá-la definitivamente.
 
 ## Coleta agendada (Windows)
 
@@ -154,12 +157,18 @@ Unregister-ScheduledTask -TaskName "PrintMonitor-Coleta" -Confirm:$false
 ## Como o volume é calculado
 
 Para um período, o volume é a soma das diferenças **positivas** entre leituras
-consecutivas dentro do intervalo. Diferenças negativas (reset/troca de contador)
-são descartadas, evitando valores incorretos.
+consecutivas. O cálculo inclui a última leitura válida anterior ao início do mês
+como linha de base, evitando perder o primeiro intervalo mensal. Uma leitura
+feita exatamente na abertura do mês tem precedência sobre a linha de base
+anterior. Quando a linha de base antecede a abertura, o painel identifica a
+**cobertura parcial** e mostra as datas realmente observadas. Diferenças
+negativas (reset/troca de contador) são sinalizadas e o equipamento fica fora
+do total consolidado até revisão.
 
 Limitação conhecida: impressões ocorridas entre a última leitura de um período e
 a primeira do período seguinte são atribuídas conforme o timestamp das leituras.
-Leituras mais frequentes aumentam a precisão. Mais detalhes em
+Leituras mais frequentes aumentam a precisão; por isso, o painel informa o
+intervalo realmente observado e usa o fuso local do computador. Mais detalhes em
 [`docs/arquitetura.md`](docs/arquitetura.md) e
 [`docs/limitacoes-fabricantes.md`](docs/limitacoes-fabricantes.md).
 
@@ -189,8 +198,9 @@ Para gerar o executável a partir do código-fonte:
 O banco SQLite é criado em `data\print_monitor.db` **ao lado do executável**,
 fora dele. Sem argumentos (duplo clique), o `.exe` abre o painel em uma **janela
 nativa** (pywebview/WebView2), sem navegador nem console — todas as ações
-(cadastrar/remover impressoras, coletar, descobrir, relatórios, filtros e
-exportação) são feitas pela interface. Com argumentos, funciona como CLI.
+(cadastrar ou pausar impressoras, coletar, revisar histórico, descobrir,
+relatórios, filtros e exportação) são feitas pela interface. Com argumentos,
+funciona como CLI.
 Detalhes em [`docs/empacotamento.md`](docs/empacotamento.md).
 
 ## Testes

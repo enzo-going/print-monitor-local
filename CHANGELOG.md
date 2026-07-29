@@ -3,18 +3,35 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado]
+## [1.1.0] — 2026-07-29
 
 ### Adicionado
 
+- Histórico de leituras na interface, com cadastro de linha de base manual,
+  diferença desde a leitura anterior e filtro por impressora.
+- Correção reversível: uma leitura pode ser ignorada nos cálculos e restaurada
+  depois, preservando a auditoria.
+- Cobertura do relatório por impressora, distinguindo resultado medido,
+  cobertura parcial, contador sem aumento, espera por linha de base e reset.
 - Coleta em lote concorrente, configurável por `PRINT_MONITOR_WORKERS` ou
   `collect --workers`, mantendo a gravação SQLite em uma única transação.
-- Proteção CSRF, limite de upload e cabeçalhos de segurança no dashboard local.
+- Proteção CSRF, limite de upload, validação do cabeçalho `Host` e cabeçalhos de
+  segurança no dashboard local; o servidor sem autenticação recusa exposição
+  fora dos endereços de loopback.
 - Ruff na suíte de desenvolvimento e no GitHub Actions.
 - Validação de limites de descoberta e testes para pacotes SNMP malformados.
 
 ### Alterado
 
+- Interface reorganizada em torno da produção mensal, com nomes dos meses,
+  atalhos de período, contador acumulado claramente identificado, horário local,
+  estados vazios explicativos e proteção contra clique duplo na coleta.
+- CSV e CLI distinguem um zero efetivamente medido de um período ainda sem
+  intervalo suficiente; o CSV inclui estado e cobertura.
+- Pausar uma impressora substitui a exclusão como ação principal e preserva
+  todo o seu histórico; a exclusão definitiva exige confirmação.
+- O modo simulado foi movido para opções de teste para reduzir o risco de
+  contaminar relatórios reais.
 - A coleta SNMP real passa a ser o padrão; o backend simulado continua
   disponível explicitamente para demonstrações e testes.
 - O dashboard agora mostra impressoras ativas, quantidade de leituras, última
@@ -28,8 +45,22 @@ Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
 ### Corrigido
 
+- O relatório mensal agora usa a última leitura válida anterior ao início do
+  mês como linha de base, sem perder o primeiro delta do período; intervalos
+  que começam antes da abertura são identificados como cobertura parcial.
+- Uma única leitura deixa de ser apresentada como zero mensal confirmado e
+  passa a indicar que ainda não há intervalo suficiente.
+- Limites de mês e horários do dashboard passam a respeitar o fuso local do
+  computador.
+- Contadores negativos, booleanos ou não inteiros retornados por um backend são
+  rejeitados antes de qualquer gravação no histórico.
+- Meses com queda/reset de contador deixam de entrar no total consolidado até
+  revisão da leitura, e exportações CSV neutralizam fórmulas de planilha em
+  campos importados.
 - A ação "Coletar agora" orienta o cadastro quando não há impressoras ativas e
   explica que a primeira leitura cria a linha de base do cálculo.
+- A coleta pelo painel respeita o backend configurado, e ações de ignorar ou
+  restaurar uma leitura preservam o mês e os filtros em uso.
 - O timestamp devolvido por uma coleta individual agora é exatamente o mesmo
   persistido no banco.
 - O parser BER/SNMP agora rejeita mensagens truncadas de forma controlada.

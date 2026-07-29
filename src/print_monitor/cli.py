@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from ipaddress import ip_address
 
 from .collector import Collector, make_backend
 from .config import load_config
@@ -20,7 +21,7 @@ from .discovery import DEFAULT_PRINTER_PORTS, discover
 from .exports import report_to_csv
 from .imports import decode_bytes, import_printers_from_csv
 from .printers import register_printer
-from .reports import monthly_report
+from .reports import monthly_report, system_timezone
 
 
 def _open_db() -> Database:
@@ -28,6 +29,17 @@ def _open_db() -> Database:
     db = Database(config.db_path)
     db.initialize()
     return db
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Aceita somente enderecos locais para o painel sem autenticacao."""
+    normalized = host.strip().lower().rstrip(".")
+    if normalized == "localhost":
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -117,20 +129,30 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
 def cmd_report(args: argparse.Namespace) -> int:
     db = _open_db()
-    report = monthly_report(db, args.year, args.month, printer_id=args.printer_id)
+    report = monthly_report(
+        db,
+        args.year,
+        args.month,
+        printer_id=args.printer_id,
+        timezone=system_timezone(),
+    )
     db.close()
 
     print(f"Relatorio mensal - {args.month:02d}/{args.year}")
     if not report:
         print("Nenhuma impressora para os filtros informados.")
         return 0
-    print(f"{'IMPRESSORA':<24} {'IP':<16} {'LOCAL':<18} {'VOLUME':>8}")
+    print(f"{'IMPRESSORA':<24} {'IP':<16} {'LOCAL':<18} {'VOLUME':>12}")
     total = 0
     for pv in report:
-        total += pv.volume
-        print(f"{pv.name[:24]:<24} {pv.ip:<16} {(pv.location or '-')[:18]:<18} {pv.volume:>8}")
-    print("-" * 68)
-    print(f"{'TOTAL':<60} {total:>8}")
+        if pv.measurable:
+            total += pv.volume
+            volume = str(pv.volume)
+        else:
+            volume = "aguardando"
+        print(f"{pv.name[:24]:<24} {pv.ip:<16} {(pv.location or '-')[:18]:<18} {volume:>12}")
+    print("-" * 72)
+    print(f"{'TOTAL MEDIDO':<60} {total:>12}")
     return 0
 
 
@@ -143,6 +165,7 @@ def cmd_export(args: argparse.Namespace) -> int:
         printer_id=args.printer_id,
         ip=args.ip,
         location=args.location,
+        timezone=system_timezone(),
     )
     db.close()
     csv_text = report_to_csv(report, args.year, args.month)
@@ -226,6 +249,12 @@ def cmd_discover(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    if not _is_loopback_host(args.host):
+        print(
+            "Por seguranca, o painel sem senha so pode escutar em localhost (127.0.0.1 ou ::1).",
+            file=sys.stderr,
+        )
+        return 2
     try:
         from .web import create_app
     except ImportError:
@@ -306,7 +335,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_disc.set_defaults(func=cmd_discover)
 
     p_srv = sub.add_parser("serve", help="Inicia o dashboard local (Flask).")
-    p_srv.add_argument("--host", default="127.0.0.1", help="Host (padrao 127.0.0.1).")
+    p_srv.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host local (127.0.0.1, localhost ou ::1).",
+    )
     p_srv.add_argument("--port", type=int, default=5000, help="Porta (padrao 5000).")
     p_srv.add_argument("--debug", action="store_true", help="Modo debug do Flask.")
     p_srv.set_defaults(func=cmd_serve)
