@@ -1,186 +1,324 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — print-monitor-local{% endblock %}
+{% block title %}{{ period_label }} — Print Monitor{% endblock %}
 {% block content %}
 
-<section class="panel">
-  <h2>Coleta</h2>
-  {% if active_printer_count %}
-  <form class="filters" method="post" action="/collect">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">Produção mensal</span>
+    <h1>{{ period_label }}</h1>
+    <p>
+      A produção é a diferença entre contadores acumulados coletados em datas distintas.
+    </p>
+  </div>
+  <div class="period-navigation" aria-label="Navegação entre meses">
+    <a class="icon-button" href="{{ previous_period_url }}"
+       aria-label="Mês anterior">←</a>
+    <a class="btn btn-quiet" href="{{ current_period_url }}">
+      Este mês
+    </a>
+    <a class="icon-button" href="{{ next_period_url }}"
+       aria-label="Próximo mês">→</a>
+  </div>
+</section>
+
+<section class="panel period-panel">
+  <form class="period-form" method="get" action="/">
     <div>
-      <label for="backend">Modo de coleta</label>
-      <select id="backend" name="backend">
-        <option value="snmp" {% if default_backend == 'snmp' %}selected{% endif %}>SNMP (impressoras reais)</option>
-        <option value="mock" {% if default_backend == 'mock' %}selected{% endif %}>Simulado (somente teste)</option>
+      <label for="month">Mês</label>
+      <select id="month" name="month">
+        {% for month_number, month_name in months %}
+          <option value="{{ month_number }}" {% if month_number == filters.month %}selected{% endif %}>
+            {{ month_name }}
+          </option>
+        {% endfor %}
       </select>
     </div>
-    <div>
-      <button type="submit">Coletar agora</button>
-    </div>
-    <div class="muted" style="align-self:center">
-      Consulta e salva o contador das {{ active_printer_count }} impressora(s) ativa(s).
-    </div>
-  </form>
-  <p class="muted">
-    A primeira coleta cria a linha de base. O volume aparece após uma nova leitura
-    quando o contador da impressora aumentar.
-  </p>
-  {% else %}
-  <div class="notice">
-    <p>
-      <strong>Nenhuma impressora ativa cadastrada.</strong>
-      O botão de coleta só pode consultar equipamentos registrados.
-    </p>
-    <div class="actions">
-      <a class="btn-primary" href="/printers">Cadastrar por IP</a>
-      <a class="btn-secondary" href="/discover">Descobrir na rede</a>
-    </div>
-  </div>
-  {% endif %}
-</section>
-
-<section class="panel">
-  <h2>Status da coleta</h2>
-  <div class="status-grid">
-    <div class="status-card">
-      <div class="muted">Impressoras ativas</div>
-      <div class="status-value">{{ active_printer_count }}</div>
-    </div>
-    <div class="status-card">
-      <div class="muted">Leituras salvas</div>
-      <div class="status-value">{{ reading_summary.total_readings }}</div>
-    </div>
-    <div class="status-card">
-      <div class="muted">Última coleta salva</div>
-      <div class="status-value" style="font-size:16px">
-        {% if reading_summary.last_collected_at %}
-          {{ reading_summary.last_collected_at.strftime("%d/%m/%Y %H:%M UTC") }}
-        {% else %}
-          Ainda não realizada
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="panel">
-  <h2>Filtros</h2>
-  <form class="filters" method="get" action="/">
     <div>
       <label for="year">Ano</label>
       <input type="number" id="year" name="year" value="{{ filters.year }}" min="2000" max="2100">
     </div>
-    <div>
-      <label for="month">Mês</label>
-      <select id="month" name="month">
-        {% for m in months %}
-          <option value="{{ m }}" {% if m == filters.month %}selected{% endif %}>{{ "%02d"|format(m) }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    {% if filters.printer_id %}<input type="hidden" name="printer_id" value="{{ filters.printer_id }}">{% endif %}
+    {% if filters.ip %}<input type="hidden" name="ip" value="{{ filters.ip }}">{% endif %}
+    {% if filters.location %}<input type="hidden" name="location" value="{{ filters.location }}">{% endif %}
+    <button type="submit">Abrir período</button>
+  </form>
+  <a class="btn btn-outline" href="{{ export_url }}">Exportar CSV</a>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card metric-primary">
+    <span class="metric-label">Produção observada no período</span>
+    {% if has_measured_data %}
+      <strong class="metric-value">{{ total | number_pt }}</strong>
+      <span class="metric-unit">páginas</span>
+      {% if partial_count %}
+        <span class="metric-help">
+          Inclui {{ partial_count }}
+          {{ "cobertura parcial" if partial_count == 1 else "coberturas parciais" }};
+          confira o intervalo abaixo.
+        </span>
+      {% endif %}
+    {% else %}
+      <strong class="metric-waiting">Aguardando comparação</strong>
+      <span class="metric-help">É preciso ter ao menos dois contadores em datas diferentes.</span>
+    {% endif %}
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Cobertura do relatório</span>
+    <strong class="metric-value metric-small">{{ measurable_count }} de {{ report | length }}</strong>
+    <span class="metric-help">
+      {{ "impressora com intervalo mensurável" if report | length == 1
+         else "impressoras com intervalo mensurável" }}
+    </span>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Última coleta salva</span>
+    {% if reading_summary.last_collected_at %}
+      <strong class="metric-date">{{ reading_summary.last_collected_at | local_datetime }}</strong>
+      <span class="metric-help">horário local deste computador</span>
+    {% else %}
+      <strong class="metric-date">Ainda não realizada</strong>
+      <span class="metric-help">faça a primeira coleta para criar a linha de base</span>
+    {% endif %}
+  </article>
+</section>
+
+{% if active_printer_count %}
+<section class="panel collect-panel">
+  <div>
+    <span class="eyebrow">Atualização</span>
+    <h2>Coletar contadores agora</h2>
+    <p>
+      Consulta {{ active_printer_count }}
+      {{ "impressora ativa" if active_printer_count == 1 else "impressoras ativas" }}
+      e salva um novo ponto.
+      O contador é acumulado; o sistema calcula quanto aumentou entre as coletas.
+    </p>
+  </div>
+  <form method="post" action="/collect" data-loading="Coletando…">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="backend" value="{{ default_backend }}">
+    <input type="hidden" name="year" value="{{ filters.year }}">
+    <input type="hidden" name="month" value="{{ filters.month }}">
+    <button class="btn-large" type="submit">Atualizar contadores</button>
+    <details class="test-options">
+      <summary>Opções de teste</summary>
+      <label class="check-row">
+        <input type="checkbox" name="use_mock" value="1">
+        Usar leitura simulada. Não use em relatórios reais.
+      </label>
+    </details>
+  </form>
+</section>
+{% else %}
+<section class="notice notice-warning">
+  <div>
+    <strong>Nenhuma impressora ativa.</strong>
+    <p>Cadastre um equipamento ou reative uma impressora para começar a coleta.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/printers">Cadastrar impressora</a>
+    <a class="btn btn-outline" href="/discover">Descobrir na rede</a>
+  </div>
+</section>
+{% endif %}
+
+{% if not has_measured_data and report %}
+<section class="notice notice-info">
+  <div>
+    <strong>O contador acumulado não é o total do mês.</strong>
+    <p>
+      Uma leitura isolada confirma o contador atual, mas não revela quanto foi impresso antes dela.
+      Faça outra coleta ou informe um contador histórico confiável.
+    </p>
+  </div>
+  <a class="btn btn-outline" href="/readings">Informar leitura histórica</a>
+</section>
+{% endif %}
+
+<details class="panel filter-details"
+  {% if filters.printer_id or filters.ip or filters.location %}open{% endif %}>
+  <summary>Filtros avançados</summary>
+  <form class="filter-form" method="get" action="/">
+    <input type="hidden" name="year" value="{{ filters.year }}">
+    <input type="hidden" name="month" value="{{ filters.month }}">
     <div>
       <label for="printer_id">Impressora</label>
       <select id="printer_id" name="printer_id">
         <option value="">Todas</option>
-        {% for p in printers %}
-          <option value="{{ p.id }}" {% if p.id == filters.printer_id %}selected{% endif %}>{{ p.name }}</option>
+        {% for printer in printers %}
+          <option value="{{ printer.id }}" {% if printer.id == filters.printer_id %}selected{% endif %}>
+            {{ printer.name }}
+          </option>
         {% endfor %}
       </select>
     </div>
     <div>
-      <label for="ip">IP (parcial)</label>
-      <input type="text" id="ip" name="ip" value="{{ filters.ip }}" placeholder="192.168.">
+      <label for="ip">IP contém</label>
+      <input type="text" id="ip" name="ip" value="{{ filters.ip }}" placeholder="Digite parte do IP">
     </div>
     <div>
-      <label for="location">Local (parcial)</label>
-      <input type="text" id="location" name="location" value="{{ filters.location }}" placeholder="Financeiro">
+      <label for="location">Local contém</label>
+      <input type="text" id="location" name="location" value="{{ filters.location }}"
+             placeholder="Digite o setor">
     </div>
-    <div>
-      <button type="submit">Aplicar</button>
-    </div>
-    <div>
-      <a class="btn-secondary" href="/export.csv{% if query %}?{{ query }}{% endif %}">Exportar CSV</a>
-    </div>
+    <button type="submit">Aplicar filtros</button>
+    <a class="btn btn-quiet" href="/?year={{ filters.year }}&month={{ filters.month }}">Limpar</a>
   </form>
-</section>
+</details>
 
 <section class="panel">
-  <h2>Total do mês {{ "%02d"|format(filters.month) }}/{{ filters.year }}</h2>
-  <div class="kpi">{{ "{:,}".format(total).replace(",", ".") }}</div>
-  <div class="muted">impressões no período (soma das diferenças entre leituras)</div>
-  {% if reading_summary.total_readings == 1 %}
-  <div class="muted">Há somente uma leitura salva; ela é a linha de base do próximo cálculo.</div>
-  {% endif %}
-</section>
-
-<section class="panel">
-  <h2>Ranking — impressoras mais usadas</h2>
-  {% if ranking %}
-  <table>
-    <thead>
-      <tr><th>#</th><th>Impressora</th><th>IP</th><th>Local</th><th class="num">Volume</th></tr>
-    </thead>
-    <tbody>
-      {% for pv in ranking %}
-      <tr>
-        <td>{{ loop.index }}</td>
-        <td>{{ pv.name }}</td>
-        <td>{{ pv.ip }}</td>
-        <td>{{ pv.location or "-" }}</td>
-        <td class="num">{{ "{:,}".format(pv.volume).replace(",", ".") }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty">Sem volume registrado para os filtros selecionados.</p>
-  {% endif %}
-</section>
-
-<section class="panel">
-  <h2>Detalhamento por impressora</h2>
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Detalhamento</span>
+      <h2>Resultado por impressora</h2>
+    </div>
+    <span class="section-note">Contador atual e produção do mês são valores diferentes.</span>
+  </div>
   {% if report %}
   <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Impressora</th>
-        <th>IP</th>
-        <th>Local</th>
-        <th class="num">Último contador</th>
-        <th>Última coleta</th>
-        <th class="num">Volume</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for pv in report %}
-      {% set latest = latest_by_printer.get(pv.printer_id) %}
-      <tr>
-        <td>{{ pv.name }}</td>
-        <td>{{ pv.ip }}</td>
-        <td>{{ pv.location or "-" }}</td>
-        <td class="num">
-          {% if latest %}
-            {{ "{:,}".format(latest.total_counter).replace(",", ".") }}
-          {% else %}
-            -
-          {% endif %}
-        </td>
-        <td>
-          {% if latest %}
-            {{ latest.collected_at.strftime("%d/%m/%Y %H:%M UTC") }}
-          {% else %}
-            Nunca
-          {% endif %}
-        </td>
-        <td class="num">{{ "{:,}".format(pv.volume).replace(",", ".") }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <table>
+      <thead>
+        <tr>
+          <th>Impressora</th>
+          <th>Produção no período</th>
+          <th>Cobertura observada</th>
+          <th>Contador atual</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in report %}
+        {% set latest = latest_by_printer.get(item.printer_id) %}
+        <tr>
+          <td>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.location or "Local não informado" }} · {{ item.ip }}</small>
+          </td>
+          <td>
+            {% if item.state == "counter_reset" %}
+              <strong class="table-waiting">Não consolidado</strong>
+              <small>{{ item.volume | number_pt }} páginas positivas; contador diminuiu</small>
+            {% elif item.measurable %}
+              <strong class="table-number">{{ item.volume | number_pt }}</strong>
+              <small>páginas medidas</small>
+            {% else %}
+              <strong class="table-waiting">Aguardando</strong>
+              <small>sem intervalo suficiente</small>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.measurable %}
+              <span>{{ item.coverage_start | local_datetime }}</span>
+              <small>até {{ item.coverage_end | local_datetime }}</small>
+            {% elif item.coverage_end %}
+              <span>Uma leitura em</span>
+              <small>{{ item.coverage_end | local_datetime }}</small>
+            {% else %}
+              <span>Sem leitura no período</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if latest %}
+              <strong class="table-number">{{ latest.total_counter | number_pt }}</strong>
+              <small>acumulado da vida útil</small>
+            {% else %}
+              <span>—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.state == "measured" %}
+              <span class="badge badge-success">Medido</span>
+            {% elif item.state == "partial" %}
+              <span class="badge badge-warning">Cobertura parcial</span>
+            {% elif item.state == "no_increase" %}
+              <span class="badge badge-neutral">Sem alteração</span>
+            {% elif item.state == "counter_reset" %}
+              <span class="badge badge-danger">Verificar reset</span>
+            {% elif item.state == "waiting_baseline" %}
+              <span class="badge badge-warning">Aguardando comparação</span>
+            {% else %}
+              <span class="badge badge-neutral">Sem coleta no mês</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
   {% else %}
-  <p class="empty">Nenhuma impressora atende aos filtros.</p>
+    <p class="empty">Nenhuma impressora atende aos filtros selecionados.</p>
+  {% endif %}
+</section>
+
+{% if ranking | length > 1 %}
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Comparação</span>
+      <h2>Impressoras mais utilizadas</h2>
+    </div>
+  </div>
+  <ol class="ranking-list">
+    {% for item in ranking %}
+    <li>
+      <span class="ranking-position">{{ loop.index }}</span>
+      <span class="ranking-name">{{ item.name }}<small>{{ item.location or "Sem local" }}</small></span>
+      <strong>{{ item.volume | number_pt }} páginas</strong>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Auditoria</span>
+      <h2>Últimas leituras</h2>
+    </div>
+    <a class="btn btn-quiet" href="/readings">Abrir histórico completo</a>
+  </div>
+  {% if recent_readings %}
+  <div class="reading-list">
+    {% for reading in recent_readings %}
+    {% set printer = printer_by_id.get(reading.printer_id) %}
+    <article class="reading-row {% if reading.ignored %}is-ignored{% endif %}">
+      <div>
+        <strong>{{ printer.name if printer else "Impressora removida" }}</strong>
+        <small>{{ reading.collected_at | local_datetime }}</small>
+      </div>
+      <div>
+        <strong>{{ reading.total_counter | number_pt }}</strong>
+        <small>contador acumulado</small>
+      </div>
+      {% if reading.ignored %}
+        <span class="badge badge-neutral">Ignorada</span>
+      {% else %}
+        <form method="post" action="/readings/{{ reading.id }}/ignore"
+              data-confirm="Retirar esta leitura dos cálculos? Ela continuará disponível para restauração.">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="return_to" value="dashboard">
+          <input type="hidden" name="year" value="{{ filters.year }}">
+          <input type="hidden" name="month" value="{{ filters.month }}">
+          {% if filters.printer_id %}
+            <input type="hidden" name="printer_id" value="{{ filters.printer_id }}">
+          {% endif %}
+          {% if filters.ip %}
+            <input type="hidden" name="ip" value="{{ filters.ip }}">
+          {% endif %}
+          {% if filters.location %}
+            <input type="hidden" name="location" value="{{ filters.location }}">
+          {% endif %}
+          <input type="hidden" name="reason" value="Correção pelo painel">
+          <button class="btn-link-danger" type="submit">Retirar do cálculo</button>
+        </form>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="empty">Nenhuma leitura salva.</p>
   {% endif %}
 </section>
 

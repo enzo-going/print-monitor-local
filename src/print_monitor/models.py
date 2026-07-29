@@ -32,6 +32,8 @@ class Reading:
     total_counter: int
     collected_at: datetime
     source: str = "manual"
+    ignored: bool = False
+    ignore_reason: str | None = None
 
 
 @dataclass(frozen=True)

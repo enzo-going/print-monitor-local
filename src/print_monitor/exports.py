@@ -12,7 +12,26 @@ import io
 
 from .reports import PrinterVolume
 
-CSV_HEADER = ["printer_id", "name", "ip", "location", "year", "month", "volume"]
+CSV_HEADER = [
+    "printer_id",
+    "name",
+    "ip",
+    "location",
+    "year",
+    "month",
+    "volume",
+    "measurable",
+    "state",
+    "coverage_start",
+    "coverage_end",
+]
+
+
+def _safe_spreadsheet_text(value: str) -> str:
+    """Impede que texto controlado pelo usuario seja interpretado como formula."""
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{value}"
+    return value
 
 
 def report_to_csv(report: list[PrinterVolume], year: int, month: int) -> str:
@@ -28,12 +47,16 @@ def report_to_csv(report: list[PrinterVolume], year: int, month: int) -> str:
         writer.writerow(
             [
                 pv.printer_id,
-                pv.name,
-                pv.ip,
-                pv.location or "",
+                _safe_spreadsheet_text(pv.name),
+                _safe_spreadsheet_text(pv.ip),
+                _safe_spreadsheet_text(pv.location or ""),
                 year,
                 month,
-                pv.volume,
+                pv.volume if pv.measurable else "",
+                "yes" if pv.measurable else "no",
+                pv.state,
+                pv.coverage_start.isoformat() if pv.coverage_start else "",
+                pv.coverage_end.isoformat() if pv.coverage_end else "",
             ]
         )
     return buffer.getvalue()

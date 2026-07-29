@@ -30,6 +30,13 @@ class CounterBackend(Protocol):
     def read_total_counter(self, printer: Printer) -> int: ...
 
 
+def _validated_counter(value: object) -> int:
+    """Aceita somente contadores inteiros e nao negativos."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"Contador invalido retornado pelo equipamento: {value!r}.")
+    return value
+
+
 def _stable_seed(ip: str) -> int:
     """Gera um numero estavel e deterministico a partir do IP."""
     digest = hashlib.sha256(ip.encode("utf-8")).hexdigest()
@@ -75,7 +82,7 @@ class Collector:
         if printer.id is None:
             raise ValueError("Impressora sem id; cadastre-a antes de coletar.")
         collected_at = at or utcnow()
-        counter = self.backend.read_total_counter(printer)
+        counter = _validated_counter(self.backend.read_total_counter(printer))
         reading_id = self.db.add_reading(
             printer_id=printer.id,
             total_counter=counter,
@@ -119,7 +126,7 @@ class Collector:
             ]
             for printer, future in zip(printers, futures, strict=True):
                 try:
-                    successful.append((printer, future.result()))
+                    successful.append((printer, _validated_counter(future.result())))
                 except Exception as exc:  # backends podem expor falhas variadas
                     outcome.failures.append((printer, str(exc)))
 
