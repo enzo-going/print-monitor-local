@@ -32,13 +32,15 @@ try {
     & $py -m pip install --disable-pip-version-check -q pyinstaller flask pywebview
 
     # Separador de --add-data no Windows e ";".
-    $addData = "src/print_monitor/web/templates;print_monitor/web/templates"
+    $templatesData = "src/print_monitor/web/templates;print_monitor/web/templates"
+    $staticData = "src/print_monitor/web/static;print_monitor/web/static"
 
     Write-Host "Empacotando com PyInstaller..."
     & $py -m PyInstaller --noconfirm --clean --onefile --windowed `
         --name print-monitor `
         --paths src `
-        --add-data $addData `
+        --add-data $templatesData `
+        --add-data $staticData `
         --hidden-import print_monitor.web `
         --collect-all webview `
         --copy-metadata pywebview `
