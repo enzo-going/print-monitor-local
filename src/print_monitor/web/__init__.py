@@ -27,7 +27,7 @@ from ..db import Database
 from ..discovery import DEFAULT_PRINTER_PORTS, discover
 from ..exports import report_to_csv
 from ..imports import decode_bytes, import_printers_from_csv
-from ..printers import register_printer
+from ..printers import register_printer, update_printer
 from ..reports import monthly_report, system_timezone
 
 MONTH_NAMES = (
@@ -438,6 +438,29 @@ def create_app(
                 serial=request.form.get("serial") or None,
             )
             flash("Impressora cadastrada com sucesso.", "ok")
+        except ValueError as exc:
+            flash(str(exc), "erro")
+        finally:
+            db.close()
+        return redirect(url_for("printers_view"))
+
+    @app.route("/printers/<int:printer_id>/edit", methods=["POST"])
+    def printers_edit(printer_id: int) -> Response:
+        db = open_db()
+        try:
+            update_printer(
+                db,
+                printer_id,
+                name=request.form.get("name", ""),
+                ip=request.form.get("ip", ""),
+                location=request.form.get("location") or None,
+                model=request.form.get("model") or None,
+                serial=request.form.get("serial") or None,
+            )
+            flash(
+                "Cadastro atualizado. O histórico e o estado de coleta foram preservados.",
+                "ok",
+            )
         except ValueError as exc:
             flash(str(exc), "erro")
         finally:

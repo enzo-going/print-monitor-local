@@ -697,6 +697,33 @@ tbody tr:hover {
   display: inline-block;
 }
 
+.edit-row td {
+  padding-top: 0.25rem;
+}
+
+.edit-zone {
+  background: rgba(8, 17, 31, 0.42);
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 0.65rem 0.75rem;
+}
+
+.edit-zone summary {
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.edit-zone[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.edit-zone p {
+  font-size: 0.78rem;
+  margin-bottom: 0.85rem;
+}
+
 .danger-zone {
   color: var(--muted);
   font-size: 0.72rem;

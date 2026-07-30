@@ -133,6 +133,68 @@ def test_add_printer_invalid_ip_flashes_error(client_and_db):
     db.close()
 
 
+def test_edit_printer_preserves_history_and_collection_state(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Antiga", ip="192.168.5.5", location="TI")
+    reading_id = db.add_reading(pid, 123_456)
+    db.set_printer_active(pid, False)
+    db.close()
+
+    response = client.post(
+        f"/printers/{pid}/edit",
+        data={
+            "name": " Nova ",
+            "ip": " 2001:0db8::5 ",
+            "location": " Financeiro ",
+            "model": " Modelo X ",
+            "serial": " SERIE-01 ",
+        },
+        follow_redirects=True,
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Cadastro atualizado" in body
+    assert "histórico e o estado de coleta foram preservados" in body
+    assert "SERIE-01" in body
+    assert "Editar cadastro de Nova" in body
+
+    db = Database(db_path)
+    updated = db.get_printer(pid)
+    assert updated is not None
+    assert updated.name == "Nova"
+    assert updated.ip == "2001:db8::5"
+    assert updated.location == "Financeiro"
+    assert updated.model == "Modelo X"
+    assert updated.serial == "SERIE-01"
+    assert updated.active is False
+    assert db.get_reading(reading_id) is not None
+    db.close()
+
+
+def test_edit_printer_rejects_duplicate_ip(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    first_id = db.add_printer(name="Primeira", ip="192.168.5.5")
+    db.add_printer(name="Segunda", ip="192.168.5.6")
+    db.close()
+
+    response = client.post(
+        f"/printers/{first_id}/edit",
+        data={"name": "Primeira", "ip": "192.168.5.6"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Ja existe uma impressora cadastrada" in response.get_data(as_text=True)
+    db = Database(db_path)
+    unchanged = db.get_printer(first_id)
+    assert unchanged is not None
+    assert unchanged.ip == "192.168.5.5"
+    db.close()
+
+
 def test_delete_printer_requires_explicit_confirmation(client_and_db):
     client, db_path = client_and_db
     db = Database(db_path)
