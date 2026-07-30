@@ -154,6 +154,32 @@ class Database:
         rows = self.conn.execute(query).fetchall()
         return [_row_to_printer(r) for r in rows]
 
+    def update_printer(
+        self,
+        printer_id: int,
+        *,
+        name: str,
+        ip: str,
+        location: str | None = None,
+        model: str | None = None,
+        serial: str | None = None,
+    ) -> bool:
+        """Atualiza somente o cadastro, preservando estado e historico."""
+        try:
+            cur = self.conn.execute(
+                """
+                UPDATE printers
+                SET name = ?, ip = ?, location = ?, model = ?, serial = ?
+                WHERE id = ?
+                """,
+                (name, ip, location, model, serial, printer_id),
+            )
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            raise
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def delete_printer(self, printer_id: int) -> bool:
         """Remove uma impressora e suas leituras (cascade). Retorna se removeu."""
         cur = self.conn.execute("DELETE FROM printers WHERE id = ?", (printer_id,))
