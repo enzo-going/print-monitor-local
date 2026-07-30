@@ -79,6 +79,53 @@ def test_two_equal_readings_are_a_measured_zero():
     assert usage.state == "no_increase"
 
 
+def test_equal_readings_at_same_timestamp_do_not_create_interval():
+    start, end = month_bounds(2026, 6)
+    same_moment = datetime(2026, 6, 15, 9, 30, tzinfo=UTC)
+    readings = [
+        Reading(id=1, printer_id=1, total_counter=100_000, collected_at=same_moment),
+        Reading(id=2, printer_id=1, total_counter=100_000, collected_at=same_moment),
+    ]
+
+    usage = period_usage(readings, start, end)
+
+    assert usage.volume == 0
+    assert usage.measurable is False
+    assert usage.state == "waiting_baseline"
+    assert usage.coverage_start == usage.coverage_end == same_moment
+
+
+def test_different_counters_at_same_timestamp_require_review():
+    start, end = month_bounds(2026, 6)
+    same_moment = datetime(2026, 6, 15, 9, 30, tzinfo=UTC)
+    readings = [
+        Reading(id=1, printer_id=1, total_counter=100_000, collected_at=same_moment),
+        Reading(id=2, printer_id=1, total_counter=100_500, collected_at=same_moment),
+    ]
+
+    usage = period_usage(readings, start, end)
+
+    assert usage.volume == 0
+    assert usage.measurable is False
+    assert usage.state == "conflicting_readings"
+    assert usage.coverage_start == usage.coverage_end == same_moment
+
+
+def test_conflicting_baseline_at_same_timestamp_requires_review():
+    start, end = month_bounds(2026, 6)
+    baseline_moment = datetime(2026, 5, 31, 23, 30, tzinfo=UTC)
+    readings = [
+        Reading(id=1, printer_id=1, total_counter=99_000, collected_at=baseline_moment),
+        Reading(id=2, printer_id=1, total_counter=99_500, collected_at=baseline_moment),
+        _reading(100_000, 2026, 6, 2),
+    ]
+
+    usage = period_usage(readings, start, end)
+
+    assert usage.measurable is False
+    assert usage.state == "conflicting_readings"
+
+
 def test_volume_with_counter_reset_is_robust():
     # Reset do contador (troca/zeragem): a diferenca negativa e descartada.
     readings = [
@@ -110,6 +157,17 @@ def test_month_bounds_december():
     start, end = month_bounds(2026, 12)
     assert start == datetime(2026, 12, 1, tzinfo=UTC)
     assert end < datetime(2027, 1, 1, tzinfo=UTC)
+
+
+def test_month_bounds_supports_last_representable_month():
+    start, end = month_bounds(9999, 12)
+
+    assert start == datetime(9999, 12, 1, tzinfo=UTC)
+    assert end == datetime.max.replace(tzinfo=UTC)
+
+    local_start, local_end = month_bounds(9999, 12, timezone(timedelta(hours=-3)))
+    assert local_start == datetime(9999, 12, 1, 3, tzinfo=UTC)
+    assert local_end == datetime.max.replace(tzinfo=UTC)
 
 
 def test_month_bounds_respect_local_timezone():
