@@ -90,3 +90,20 @@ def test_csv_empty_report_has_only_header():
     text = report_to_csv([], 2026, 6)
     rows = list(csv.reader(io.StringIO(text)))
     assert rows == [CSV_HEADER]
+
+
+def test_excel_mode_uses_utf8_bom_and_semicolon_without_losing_accents():
+    report = [_pv(1, "Recepção", "192.0.2.10", "Administração", 25)]
+
+    text = report_to_csv(
+        report,
+        2026,
+        7,
+        delimiter=";",
+        include_bom=True,
+    )
+
+    assert text.encode("utf-8").startswith(b"\xef\xbb\xbf")
+    rows = list(csv.reader(io.StringIO(text.lstrip("\ufeff")), delimiter=";"))
+    assert rows[0] == CSV_HEADER
+    assert rows[1][1:4] == ["Recepção", "192.0.2.10", "Administração"]

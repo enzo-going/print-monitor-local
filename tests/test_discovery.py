@@ -6,7 +6,9 @@ import socket
 
 import pytest
 
+from print_monitor.config import Config
 from print_monitor.discovery import (
+    _try_snmp_counter,
     discover,
     host_count,
     iter_hosts,
@@ -67,6 +69,28 @@ def test_discover_finds_local_listener():
 def test_discover_empty_when_no_ports_open():
     found = discover("127.0.0.1/32", ports=(_free_tcp_port(),), timeout=0.3)
     assert found == []
+
+
+def test_discovery_passes_configured_snmp_version(monkeypatch):
+    received: dict[str, object] = {}
+
+    def fake_snmp_get(host, oid, **kwargs):
+        received.update(host=host, oid=oid, **kwargs)
+        return 42
+
+    monkeypatch.setattr("print_monitor.snmp.snmp_get", fake_snmp_get)
+    config = Config(
+        db_path="data/test.db",
+        backend="snmp",
+        snmp_community="public",
+        snmp_port=161,
+        snmp_timeout=2,
+        snmp_retries=0,
+        snmp_version="1",
+    )
+
+    assert _try_snmp_counter("192.0.2.20", config) == 42
+    assert received["version"] == "1"
 
 
 def test_discover_rejects_large_range():

@@ -4,4 +4,4 @@ O pacote coleta contadores totais de impressao, persiste o historico em SQLite
 e calcula o volume por periodo pela diferenca entre leituras.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"

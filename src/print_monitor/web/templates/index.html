@@ -58,6 +58,20 @@
           confira o intervalo abaixo.
         </span>
       {% endif %}
+      {% if review_count %}
+        <span class="metric-help">
+          Não inclui {{ review_count }}
+          {{ "impressora que precisa" if review_count == 1 else "impressoras que precisam" }}
+          de revisão.
+        </span>
+      {% endif %}
+    {% elif review_count %}
+      <strong class="metric-waiting">Revisão necessária</strong>
+      <span class="metric-help">
+        {{ review_count }}
+        {{ "impressora ficou fora" if review_count == 1 else "impressoras ficaram fora" }}
+        do total até a conferência das leituras.
+      </span>
     {% else %}
       <strong class="metric-waiting">Aguardando comparação</strong>
       <span class="metric-help">É preciso ter ao menos dois contadores em datas diferentes.</span>
@@ -100,6 +114,13 @@
     <input type="hidden" name="backend" value="{{ default_backend }}">
     <input type="hidden" name="year" value="{{ filters.year }}">
     <input type="hidden" name="month" value="{{ filters.month }}">
+    {% if filters.printer_id %}
+      <input type="hidden" name="printer_id" value="{{ filters.printer_id }}">
+    {% endif %}
+    {% if filters.ip %}<input type="hidden" name="ip" value="{{ filters.ip }}">{% endif %}
+    {% if filters.location %}
+      <input type="hidden" name="location" value="{{ filters.location }}">
+    {% endif %}
     <button class="btn-large" type="submit">Atualizar contadores</button>
     <details class="test-options">
       <summary>Opções de teste</summary>
@@ -123,13 +144,41 @@
 </section>
 {% endif %}
 
-{% if not has_measured_data and report %}
+{% if review_count %}
+<section class="notice notice-warning">
+  <div>
+    <strong>
+      {{ review_count }}
+      {{ "impressora precisa" if review_count == 1 else "impressoras precisam" }}
+      de revisão.
+    </strong>
+    <p>
+      {% if reset_count and conflict_count %}
+        Há contador que diminuiu e leituras divergentes registradas no mesmo horário.
+      {% elif reset_count %}
+        Há contador que diminuiu, o que pode indicar reset, troca ou leitura incorreta.
+      {% else %}
+        Há contadores diferentes registrados para a mesma impressora no mesmo horário.
+      {% endif %}
+      Esses resultados não entram no total consolidado.
+    </p>
+  </div>
+  <a class="btn btn-outline" href="/readings">Revisar histórico</a>
+</section>
+{% endif %}
+
+{% if waiting_baseline_count %}
 <section class="notice notice-info">
   <div>
-    <strong>O contador acumulado não é o total do mês.</strong>
+    <strong>
+      {{ waiting_baseline_count }}
+      {{ "impressora aguarda" if waiting_baseline_count == 1 else "impressoras aguardam" }}
+      comparação.
+    </strong>
     <p>
-      Uma leitura isolada confirma o contador atual, mas não revela quanto foi impresso antes dela.
-      Faça outra coleta ou informe um contador histórico confiável.
+      O contador acumulado não é o total do mês. Uma leitura isolada confirma o valor atual,
+      mas não revela quanto foi impresso antes dela. Faça outra coleta ou informe um contador
+      histórico confiável.
     </p>
   </div>
   <a class="btn btn-outline" href="/readings">Informar leitura histórica</a>
@@ -196,7 +245,10 @@
             <small>{{ item.location or "Local não informado" }} · {{ item.ip }}</small>
           </td>
           <td>
-            {% if item.state == "counter_reset" %}
+            {% if item.state == "conflicting_readings" %}
+              <strong class="table-waiting">Não consolidado</strong>
+              <small>contadores diferentes no mesmo horário</small>
+            {% elif item.state == "counter_reset" %}
               <strong class="table-waiting">Não consolidado</strong>
               <small>{{ item.volume | number_pt }} páginas positivas; contador diminuiu</small>
             {% elif item.measurable %}
@@ -208,7 +260,10 @@
             {% endif %}
           </td>
           <td>
-            {% if item.measurable %}
+            {% if item.state == "conflicting_readings" %}
+              <span>Horário conflitante</span>
+              <small>{{ item.coverage_end | local_datetime }}</small>
+            {% elif item.measurable %}
               <span>{{ item.coverage_start | local_datetime }}</span>
               <small>até {{ item.coverage_end | local_datetime }}</small>
             {% elif item.coverage_end %}
@@ -235,6 +290,8 @@
               <span class="badge badge-neutral">Sem alteração</span>
             {% elif item.state == "counter_reset" %}
               <span class="badge badge-danger">Verificar reset</span>
+            {% elif item.state == "conflicting_readings" %}
+              <span class="badge badge-danger">Leituras conflitantes</span>
             {% elif item.state == "waiting_baseline" %}
               <span class="badge badge-warning">Aguardando comparação</span>
             {% else %}

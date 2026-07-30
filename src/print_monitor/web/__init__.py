@@ -27,7 +27,7 @@ from ..db import Database
 from ..discovery import DEFAULT_PRINTER_PORTS, discover
 from ..exports import report_to_csv
 from ..imports import decode_bytes, import_printers_from_csv
-from ..printers import register_printer
+from ..printers import register_printer, update_printer
 from ..reports import monthly_report, system_timezone
 
 MONTH_NAMES = (
@@ -211,6 +211,10 @@ def create_app(
         ranking = [item for item in measured if item.volume > 0]
         total = sum(item.volume for item in measured)
         partial_count = sum(item.state == "partial" for item in measured)
+        reset_count = sum(item.state == "counter_reset" for item in report)
+        conflict_count = sum(item.state == "conflicting_readings" for item in report)
+        review_count = reset_count + conflict_count
+        waiting_baseline_count = sum(item.state == "waiting_baseline" for item in report)
         previous_year, previous_month = _shift_month(filters["year"], filters["month"], -1)
         next_year, next_month = _shift_month(filters["year"], filters["month"], 1)
         now_local = datetime.now(display_timezone)
@@ -237,6 +241,10 @@ def create_app(
             has_measured_data=bool(measured),
             measurable_count=len(measured),
             partial_count=partial_count,
+            reset_count=reset_count,
+            conflict_count=conflict_count,
+            review_count=review_count,
+            waiting_baseline_count=waiting_baseline_count,
             printers=printers,
             printer_by_id={printer.id: printer for printer in printers},
             filters=filters,
@@ -269,7 +277,13 @@ def create_app(
             )
         finally:
             db.close()
-        csv_text = report_to_csv(report, filters["year"], filters["month"])
+        csv_text = report_to_csv(
+            report,
+            filters["year"],
+            filters["month"],
+            delimiter=";",
+            include_bom=True,
+        )
         filename = f"relatorio-{filters['year']}-{filters['month']:02d}.csv"
         return Response(
             csv_text,
@@ -436,6 +450,29 @@ def create_app(
             db.close()
         return redirect(url_for("printers_view"))
 
+    @app.route("/printers/<int:printer_id>/edit", methods=["POST"])
+    def printers_edit(printer_id: int) -> Response:
+        db = open_db()
+        try:
+            update_printer(
+                db,
+                printer_id,
+                name=request.form.get("name", ""),
+                ip=request.form.get("ip", ""),
+                location=request.form.get("location") or None,
+                model=request.form.get("model") or None,
+                serial=request.form.get("serial") or None,
+            )
+            flash(
+                "Cadastro atualizado. O histórico e o estado de coleta foram preservados.",
+                "ok",
+            )
+        except ValueError as exc:
+            flash(str(exc), "erro")
+        finally:
+            db.close()
+        return redirect(url_for("printers_view"))
+
     @app.route("/printers/import", methods=["POST"])
     def printers_import() -> Response:
         file = request.files.get("file")
@@ -448,11 +485,18 @@ def create_app(
             result = import_printers_from_csv(db, text)
         finally:
             db.close()
-        flash(
+        import_message = (
             f"Importadas: {result.added}; já cadastradas: {result.skipped}; "
-            f"com erro: {len(result.errors)}.",
-            "ok" if not result.errors else "erro",
+            f"com erro: {len(result.errors)}."
         )
+        if result.errors:
+            details = " ".join(
+                f"Linha {line_no}: {message}" for line_no, message in result.errors[:5]
+            )
+            import_message += f" {details}"
+            if len(result.errors) > 5:
+                import_message += f" Mais {len(result.errors) - 5} erro(s) não exibido(s)."
+        flash(import_message, "ok" if not result.errors else "erro")
         return redirect(url_for("printers_view"))
 
     @app.route("/printers/<int:printer_id>/toggle", methods=["POST"])
@@ -579,6 +623,13 @@ def create_app(
             redirect_params["year"] = year
         if month and 1 <= month <= 12:
             redirect_params["month"] = month
+        printer_id = _parse_int(request.form.get("printer_id"))
+        if printer_id is not None:
+            redirect_params["printer_id"] = printer_id
+        for key in ("ip", "location"):
+            value = (request.form.get(key) or "").strip()
+            if value:
+                redirect_params[key] = value
         return redirect(url_for("index", **redirect_params))
 
     # -- descoberta ------------------------------------------------------

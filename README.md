@@ -97,6 +97,9 @@ python -m print_monitor discover --network 192.168.0.0/24 --snmp
 > O dashboard exige o extra opcional `dashboard`: `pip install -e ".[dashboard]"`.
 > Ele separa claramente o **contador acumulado** da **produção mensal**, mostra
 > a cobertura observada, oferece histórico corrigível, filtros, ranking e CSV.
+> O CSV baixado pela interface usa UTF-8 com BOM e separador `;` para abrir
+> corretamente no Excel em português; a saída da CLI mantém o formato técnico
+> padrão com vírgulas para integrações.
 > Como não possui login, o servidor aceita somente `localhost`/loopback e não
 > expõe os contadores e cadastros para outros computadores da rede.
 
@@ -111,9 +114,10 @@ python -m print_monitor report --year 2026 --month 6
 
 A coleta real usa SNMP (v1/v2c) e é implementada em **Python puro** sobre a
 biblioteca padrão (sem dependências nativas), o que simplifica o empacotamento.
-Por padrão lê o OID `prtMarkerLifeCount` (Printer-MIB, RFC 3805). A *community
-string* e os tempos de espera vêm do ambiente ou do `.env` (ver `.env.example`),
-nunca do código.
+Por padrão usa SNMP v2c e lê o OID `prtMarkerLifeCount` (Printer-MIB, RFC 3805).
+Equipamentos antigos que aceitam somente v1 podem usar `SNMP_VERSION=1`; os
+demais devem manter `SNMP_VERSION=2c`. A *community string* e os tempos de espera
+vêm do ambiente ou do `.env` (ver `.env.example`), nunca do código.
 
 Impressoras incompatíveis ou inacessíveis são registradas como falha sem
 interromper a coleta das demais. As consultas rodam em paralelo (8 por padrão)

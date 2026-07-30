@@ -74,15 +74,24 @@ def test_build_request_rejects_invalid_oid(oid):
         build_get_request("public", oid, request_id=1)
 
 
-def _start_udp_responder(value: int):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("127.0.0.1", 0))
+def _start_udp_responder(
+    value: int,
+    *,
+    family: socket.AddressFamily = socket.AF_INET,
+    host: str = "127.0.0.1",
+    response_oid: str = OID,
+):
+    sock = socket.socket(family, socket.SOCK_DGRAM)
+    sock.bind((host, 0))
     port = sock.getsockname()[1]
 
     def serve():
         data, addr = sock.recvfrom(65535)
         req_id, _, _ = parse_response(data)  # ecoa o request-id da consulta
-        sock.sendto(build_get_response("public", OID, value, request_id=req_id), addr)
+        sock.sendto(
+            build_get_response("public", response_oid, value, request_id=req_id),
+            addr,
+        )
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
@@ -96,6 +105,59 @@ def test_snmp_get_loopback_success():
         assert value == 987654
     finally:
         sock.close()
+
+
+@pytest.mark.skipif(not socket.has_ipv6, reason="IPv6 indisponivel neste sistema")
+def test_snmp_get_ipv6_loopback_success():
+    try:
+        sock, port = _start_udp_responder(
+            456789,
+            family=socket.AF_INET6,
+            host="::1",
+        )
+    except OSError as exc:
+        pytest.skip(f"Loopback IPv6 indisponivel: {exc}")
+    try:
+        value = snmp_get("::1", OID, port=port, timeout=2.0, retries=0)
+        assert value == 456789
+    finally:
+        sock.close()
+
+
+def test_snmp_get_rejects_response_for_another_oid():
+    sock, port = _start_udp_responder(
+        123,
+        response_oid="1.3.6.1.2.1.1.3.0",
+    )
+    try:
+        with pytest.raises(SNMPError, match="OID inesperado"):
+            snmp_get("127.0.0.1", OID, port=port, timeout=2.0, retries=0)
+    finally:
+        sock.close()
+
+
+def test_snmp_get_ignores_response_from_another_udp_port():
+    listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    other_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    other_socket.bind(("127.0.0.1", 0))
+
+    def serve():
+        data, addr = listener.recvfrom(65535)
+        req_id, _, _ = parse_response(data)
+        other_socket.sendto(
+            build_get_response("public", OID, 999, request_id=req_id),
+            addr,
+        )
+
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        with pytest.raises(SNMPTimeout):
+            snmp_get("127.0.0.1", OID, port=port, timeout=0.3, retries=0)
+    finally:
+        listener.close()
+        other_socket.close()
 
 
 def test_snmp_get_timeout():
@@ -144,6 +206,29 @@ def test_snmp_backend_reads_counter():
         assert backend.read_total_counter(printer) == 555000
     finally:
         sock.close()
+
+
+def test_snmp_backend_passes_configured_v1(monkeypatch):
+    received: dict[str, object] = {}
+
+    def fake_snmp_get(host, oid, **kwargs):
+        received.update(host=host, oid=oid, **kwargs)
+        return 321
+
+    monkeypatch.setattr("print_monitor.snmp.snmp_get", fake_snmp_get)
+    config = Config(
+        db_path="data/test.db",
+        backend="snmp",
+        snmp_community="public",
+        snmp_port=161,
+        snmp_timeout=2,
+        snmp_retries=0,
+        snmp_version="1",
+    )
+    printer = Printer(id=1, name="Teste", ip="192.0.2.10")
+
+    assert SNMPBackend(config).read_total_counter(printer) == 321
+    assert received["version"] == "1"
 
 
 def test_snmp_backend_raises_on_unsupported_oid():

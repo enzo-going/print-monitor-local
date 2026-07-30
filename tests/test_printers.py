@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from print_monitor.printers import register_printer, validate_ip
+from print_monitor.printers import register_printer, update_printer, validate_ip
 
 
 def test_validate_ip_accepts_valid_ipv4():
@@ -40,3 +40,57 @@ def test_register_printer_rejects_duplicate_ip(db):
 def test_register_printer_normalizes_ip(db):
     printer = register_printer(db, name="HP 1", ip=" 10.0.0.1 ")
     assert printer.ip == "10.0.0.1"
+
+
+def test_update_printer_normalizes_fields_and_preserves_history_and_active(db):
+    printer = register_printer(db, name="Antiga", ip="192.168.0.10", location="TI")
+    assert printer.id is not None
+    reading_id = db.add_reading(printer.id, 123_456)
+    db.set_printer_active(printer.id, False)
+
+    updated = update_printer(
+        db,
+        printer.id,
+        name="  Nova  ",
+        ip=" 2001:0db8::1 ",
+        location="  Financeiro  ",
+        model="  Modelo X  ",
+        serial="  SERIE-01  ",
+    )
+
+    assert updated.id == printer.id
+    assert updated.name == "Nova"
+    assert updated.ip == "2001:db8::1"
+    assert updated.location == "Financeiro"
+    assert updated.model == "Modelo X"
+    assert updated.serial == "SERIE-01"
+    assert updated.active is False
+    assert db.get_reading(reading_id) is not None
+
+
+def test_update_printer_rejects_ip_used_by_another_printer(db):
+    first = register_printer(db, name="Primeira", ip="192.168.0.10")
+    register_printer(db, name="Segunda", ip="192.168.0.11")
+    assert first.id is not None
+
+    with pytest.raises(ValueError, match="Ja existe"):
+        update_printer(db, first.id, name="Primeira", ip="192.168.0.11")
+
+    unchanged = db.get_printer(first.id)
+    assert unchanged is not None
+    assert unchanged.ip == "192.168.0.10"
+
+
+def test_update_printer_converts_unique_race_to_value_error(db, monkeypatch):
+    first = register_printer(db, name="Primeira", ip="192.168.0.10")
+    register_printer(db, name="Segunda", ip="192.168.0.11")
+    assert first.id is not None
+    monkeypatch.setattr(db, "get_printer_by_ip", lambda _ip: None)
+
+    with pytest.raises(ValueError, match="Ja existe"):
+        update_printer(db, first.id, name="Primeira", ip="192.168.0.11")
+
+
+def test_printer_fields_have_reasonable_length_limits(db):
+    with pytest.raises(ValueError, match="no maximo 120"):
+        register_printer(db, name="X" * 121, ip="192.168.0.10")

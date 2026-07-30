@@ -24,23 +24,26 @@
       <div class="grid">
         <div>
           <label for="name">Nome *</label>
-          <input type="text" id="name" name="name" required placeholder="Impressora do setor">
+          <input type="text" id="name" name="name" maxlength="120" required
+                 placeholder="Impressora do setor">
         </div>
         <div>
           <label for="ip">IP *</label>
-          <input type="text" id="ip" name="ip" required placeholder="Ex.: 192.168.1.50">
+          <input type="text" id="ip" name="ip" maxlength="45" required
+                 placeholder="Ex.: 192.168.1.50">
         </div>
         <div>
           <label for="location">Local ou setor</label>
-          <input type="text" id="location" name="location" placeholder="Ex.: Administrativo">
+          <input type="text" id="location" name="location" maxlength="120"
+                 placeholder="Ex.: Administrativo">
         </div>
         <div>
           <label for="model">Modelo</label>
-          <input type="text" id="model" name="model" placeholder="Opcional">
+          <input type="text" id="model" name="model" maxlength="160" placeholder="Opcional">
         </div>
         <div>
           <label for="serial">Número de série</label>
-          <input type="text" id="serial" name="serial" placeholder="Opcional">
+          <input type="text" id="serial" name="serial" maxlength="120" placeholder="Opcional">
         </div>
       </div>
       <button type="submit">Cadastrar impressora</button>
@@ -84,6 +87,7 @@
           <th>IP</th>
           <th>Local</th>
           <th>Modelo</th>
+          <th>Número de série</th>
           <th>Status</th>
           <th>Ação</th>
         </tr>
@@ -95,6 +99,7 @@
           <td>{{ printer.ip }}</td>
           <td>{{ printer.location or "—" }}</td>
           <td>{{ printer.model or "—" }}</td>
+          <td>{{ printer.serial or "—" }}</td>
           <td>
             {% if printer.active %}
               <span class="badge badge-success">Coleta ativa</span>
@@ -122,6 +127,50 @@
                   Entendo que todas as leituras serão apagadas.
                 </label>
                 <button class="btn-danger" type="submit">Excluir definitivamente</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        <tr class="edit-row">
+          <td colspan="7">
+            <details class="edit-zone">
+              <summary>Editar cadastro de {{ printer.name }}</summary>
+              <p>
+                Nome, IP e identificação podem ser corrigidos sem apagar leituras.
+                O histórico e o estado atual da coleta serão preservados.
+                Altere o IP somente se ele continuar apontando para o mesmo equipamento.
+              </p>
+              <form class="stack-form" method="post"
+                    action="/printers/{{ printer.id }}/edit">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <div class="grid">
+                  <div>
+                    <label for="edit-name-{{ printer.id }}">Nome *</label>
+                    <input type="text" id="edit-name-{{ printer.id }}" name="name"
+                           value="{{ printer.name }}" maxlength="120" required>
+                  </div>
+                  <div>
+                    <label for="edit-ip-{{ printer.id }}">IP *</label>
+                    <input type="text" id="edit-ip-{{ printer.id }}" name="ip"
+                           value="{{ printer.ip }}" maxlength="45" required>
+                  </div>
+                  <div>
+                    <label for="edit-location-{{ printer.id }}">Local ou setor</label>
+                    <input type="text" id="edit-location-{{ printer.id }}" name="location"
+                           value="{{ printer.location or '' }}" maxlength="120">
+                  </div>
+                  <div>
+                    <label for="edit-model-{{ printer.id }}">Modelo</label>
+                    <input type="text" id="edit-model-{{ printer.id }}" name="model"
+                           value="{{ printer.model or '' }}" maxlength="160">
+                  </div>
+                  <div>
+                    <label for="edit-serial-{{ printer.id }}">Número de série</label>
+                    <input type="text" id="edit-serial-{{ printer.id }}" name="serial"
+                           value="{{ printer.serial or '' }}" maxlength="120">
+                  </div>
+                </div>
+                <button type="submit">Salvar alterações</button>
               </form>
             </details>
           </td>

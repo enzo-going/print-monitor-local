@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from print_monitor.db import Database
+from print_monitor.models import MAX_COUNTER
 
 pytest.importorskip("flask")
 
@@ -51,6 +53,13 @@ def test_index_out_of_range_params_do_not_500(app_client):
     assert app_client.get("/?year=99999&month=6").status_code == 200
 
 
+def test_index_supports_december_of_year_9999(app_client):
+    response = app_client.get("/?year=9999&month=12")
+
+    assert response.status_code == 200
+    assert "Dezembro de 9999" in response.get_data(as_text=True)
+
+
 def test_printers_view(app_client):
     resp = app_client.get("/printers")
     assert resp.status_code == 200
@@ -70,8 +79,9 @@ def test_export_csv(app_client):
     assert resp.status_code == 200
     assert resp.mimetype == "text/csv"
     assert "attachment" in resp.headers["Content-Disposition"]
-    body = resp.get_data(as_text=True)
-    assert "printer_id,name,ip" in body
+    assert resp.data.startswith(b"\xef\xbb\xbf")
+    body = resp.data.decode("utf-8-sig")
+    assert "printer_id;name;ip" in body
     assert "Alfa" in body
     assert "4500" in body
 
@@ -122,6 +132,68 @@ def test_add_printer_invalid_ip_flashes_error(client_and_db):
     assert "IP invalido" in resp.get_data(as_text=True)
     db = Database(db_path)
     assert db.list_printers() == []
+    db.close()
+
+
+def test_edit_printer_preserves_history_and_collection_state(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Antiga", ip="192.168.5.5", location="TI")
+    reading_id = db.add_reading(pid, 123_456)
+    db.set_printer_active(pid, False)
+    db.close()
+
+    response = client.post(
+        f"/printers/{pid}/edit",
+        data={
+            "name": " Nova ",
+            "ip": " 2001:0db8::5 ",
+            "location": " Financeiro ",
+            "model": " Modelo X ",
+            "serial": " SERIE-01 ",
+        },
+        follow_redirects=True,
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Cadastro atualizado" in body
+    assert "histórico e o estado de coleta foram preservados" in body
+    assert "SERIE-01" in body
+    assert "Editar cadastro de Nova" in body
+
+    db = Database(db_path)
+    updated = db.get_printer(pid)
+    assert updated is not None
+    assert updated.name == "Nova"
+    assert updated.ip == "2001:db8::5"
+    assert updated.location == "Financeiro"
+    assert updated.model == "Modelo X"
+    assert updated.serial == "SERIE-01"
+    assert updated.active is False
+    assert db.get_reading(reading_id) is not None
+    db.close()
+
+
+def test_edit_printer_rejects_duplicate_ip(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    first_id = db.add_printer(name="Primeira", ip="192.168.5.5")
+    db.add_printer(name="Segunda", ip="192.168.5.6")
+    db.close()
+
+    response = client.post(
+        f"/printers/{first_id}/edit",
+        data={"name": "Primeira", "ip": "192.168.5.6"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Ja existe uma impressora cadastrada" in response.get_data(as_text=True)
+    db = Database(db_path)
+    unchanged = db.get_printer(first_id)
+    assert unchanged is not None
+    assert unchanged.ip == "192.168.5.5"
     db.close()
 
 
@@ -243,6 +315,39 @@ def test_single_reading_is_shown_as_waiting_not_monthly_zero(client_and_db):
     assert "O contador acumulado não é o total do mês" in body
 
 
+def test_reset_is_shown_as_review_instead_of_missing_baseline(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Reset", ip="192.0.2.34")
+    db.add_reading(pid, 10_000, collected_at=datetime(2026, 7, 1, tzinfo=UTC))
+    db.add_reading(pid, 100, collected_at=datetime(2026, 7, 2, tzinfo=UTC))
+    db.close()
+
+    body = client.get("/?year=2026&month=7").get_data(as_text=True)
+
+    assert "Revisão necessária" in body
+    assert "pode indicar reset, troca ou leitura incorreta" in body
+    assert "Esses resultados não entram no total consolidado" in body
+    assert "É preciso ter ao menos dois contadores" not in body
+
+
+def test_conflicting_readings_are_excluded_and_explained(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Conflito", ip="192.0.2.35")
+    same_moment = datetime(2026, 7, 15, 9, 30, tzinfo=UTC)
+    db.add_reading(pid, 10_000, collected_at=same_moment)
+    db.add_reading(pid, 10_500, collected_at=same_moment)
+    db.close()
+
+    body = client.get("/?year=2026&month=7").get_data(as_text=True)
+
+    assert "Revisão necessária" in body
+    assert "contadores diferentes registrados" in body
+    assert "Leituras conflitantes" in body
+    assert "Esses resultados não entram no total consolidado" in body
+
+
 def test_manual_reading_and_ignore_restore_flow(client_and_db):
     client, db_path = client_and_db
     db = Database(db_path)
@@ -279,6 +384,29 @@ def test_manual_reading_and_ignore_restore_flow(client_and_db):
     assert "Leitura restaurada" in response.get_data(as_text=True)
 
 
+def test_manual_reading_rejects_counter_larger_than_sqlite_limit(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Limite", ip="192.0.2.37")
+    db.close()
+
+    response = client.post(
+        "/readings/add",
+        data={
+            "printer_id": str(pid),
+            "total_counter": str(MAX_COUNTER + 1),
+            "collected_at": "2026-07-01T00:00",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Contador invalido" in response.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.list_readings(pid) == []
+    db.close()
+
+
 def test_month_navigation_preserves_active_filters(app_client):
     body = app_client.get("/?year=2026&month=6&printer_id=1&location=Financeiro").get_data(
         as_text=True
@@ -290,6 +418,35 @@ def test_dashboard_uses_configured_backend(app_client):
     app_client.application.config["DEFAULT_BACKEND"] = "mock"
     body = app_client.get("/?year=2026&month=6").get_data(as_text=True)
     assert 'name="backend" value="mock"' in body
+
+
+def test_collect_redirect_preserves_all_dashboard_filters(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Contexto", ip="192.0.2.36", location="Arquivo")
+    db.close()
+
+    response = client.post(
+        "/collect",
+        data={
+            "backend": "mock",
+            "year": "2026",
+            "month": "7",
+            "printer_id": str(pid),
+            "ip": "192.0.2",
+            "location": "Arquivo",
+        },
+    )
+
+    assert response.status_code == 302
+    query = parse_qs(urlsplit(response.headers["Location"]).query)
+    assert query == {
+        "year": ["2026"],
+        "month": ["7"],
+        "printer_id": [str(pid)],
+        "ip": ["192.0.2"],
+        "location": ["Arquivo"],
+    }
 
 
 def test_ignore_redirect_preserves_dashboard_context(client_and_db):
@@ -394,6 +551,28 @@ def test_import_printers_via_upload(client_and_db):
     assert "Importadas: 1" in resp.get_data(as_text=True)
     db = Database(db_path)
     assert db.get_printer_by_ip("192.0.2.80") is not None
+    db.close()
+
+
+def test_import_upload_shows_line_details_for_missing_ip(client_and_db):
+    import io
+
+    client, db_path = client_and_db
+    csv_bytes = b"SETOR;MODELO;IP\nFinanceiro;Modelo X;\n"
+
+    response = client.post(
+        "/printers/import",
+        data={"file": (io.BytesIO(csv_bytes), "impressoras.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "com erro: 1" in body
+    assert "Linha 2: IP não informado" in body
+    db = Database(db_path)
+    assert db.list_printers() == []
     db.close()
 
 
