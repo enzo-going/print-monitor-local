@@ -18,7 +18,7 @@ from typing import Protocol
 
 from .config import Config
 from .db import Database, utcnow
-from .models import Printer, Reading
+from .models import Printer, Reading, validate_counter
 
 # Data de referencia para a simulacao de contadores (inicio da "vida util").
 _SIM_EPOCH = date(2024, 1, 1)
@@ -32,9 +32,10 @@ class CounterBackend(Protocol):
 
 def _validated_counter(value: object) -> int:
     """Aceita somente contadores inteiros e nao negativos."""
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"Contador invalido retornado pelo equipamento: {value!r}.")
-    return value
+    try:
+        return validate_counter(value)
+    except ValueError as exc:
+        raise ValueError(f"Contador invalido retornado pelo equipamento: {value!r}.") from exc
 
 
 def _stable_seed(ip: str) -> int:
@@ -81,8 +82,10 @@ class Collector:
         """Coleta o contador de uma impressora e grava a leitura."""
         if printer.id is None:
             raise ValueError("Impressora sem id; cadastre-a antes de coletar.")
-        collected_at = at or utcnow()
         counter = _validated_counter(self.backend.read_total_counter(printer))
+        # O instante representa quando a resposta chegou, não quando a consulta
+        # começou. Assim, coletas simultâneas mantêm a ordem real dos contadores.
+        collected_at = at if at is not None else utcnow()
         reading_id = self.db.add_reading(
             printer_id=printer.id,
             total_counter=counter,
@@ -114,39 +117,46 @@ class Collector:
         if not printers:
             return outcome
 
-        collected_at = at or utcnow()
-        successful: list[tuple[Printer, int]] = []
+        def read_counter(printer: Printer) -> tuple[int, datetime]:
+            counter = _validated_counter(self.backend.read_total_counter(printer))
+            collected_at = at if at is not None else utcnow()
+            return counter, collected_at
+
+        successful: list[tuple[Printer, int, datetime]] = []
         max_workers = min(max(1, workers), len(printers))
         with ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="print-monitor",
         ) as executor:
-            futures = [
-                executor.submit(self.backend.read_total_counter, printer) for printer in printers
-            ]
+            futures = [executor.submit(read_counter, printer) for printer in printers]
             for printer, future in zip(printers, futures, strict=True):
                 try:
-                    successful.append((printer, _validated_counter(future.result())))
+                    counter, collected_at = future.result()
+                    successful.append((printer, counter, collected_at))
                 except Exception as exc:  # backends podem expor falhas variadas
                     outcome.failures.append((printer, str(exc)))
 
         rows = [
             (printer.id, counter, collected_at, self.source)
-            for printer, counter in successful
+            for printer, counter, collected_at in successful
             if printer.id is not None
         ]
-        ids = self.db.add_readings(rows)
-        outcome.readings = [
-            Reading(
-                id=reading_id,
-                printer_id=printer.id,
-                total_counter=counter,
-                collected_at=collected_at,
-                source=self.source,
+        ids = self.db.add_readings_if_printers_active(rows)
+        for reading_id, (printer, counter, collected_at) in zip(ids, successful, strict=True):
+            if reading_id is None:
+                outcome.failures.append(
+                    (printer, "Impressora removida ou pausada durante a coleta.")
+                )
+                continue
+            outcome.readings.append(
+                Reading(
+                    id=reading_id,
+                    printer_id=printer.id,
+                    total_counter=counter,
+                    collected_at=collected_at,
+                    source=self.source,
+                )
             )
-            for reading_id, (printer, counter) in zip(ids, successful, strict=True)
-            if printer.id is not None
-        ]
         return outcome
 
 
