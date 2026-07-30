@@ -34,14 +34,25 @@ def _safe_spreadsheet_text(value: str) -> str:
     return value
 
 
-def report_to_csv(report: list[PrinterVolume], year: int, month: int) -> str:
+def report_to_csv(
+    report: list[PrinterVolume],
+    year: int,
+    month: int,
+    *,
+    delimiter: str = ",",
+    include_bom: bool = False,
+) -> str:
     """Serializa um relatorio mensal para CSV (com cabecalho).
 
     Usa ``\\r\\n`` como terminador de linha (padrao CSV), seguro para abrir em
-    planilhas no Windows.
+    planilhas no Windows. A interface web ativa BOM UTF-8 e ``;`` para facilitar
+    a abertura direta no Excel em ambientes pt-BR; a API padrao continua usando
+    virgula para preservar compatibilidade com integracoes existentes.
     """
     buffer = io.StringIO()
-    writer = csv.writer(buffer)
+    if include_bom:
+        buffer.write("\ufeff")
+    writer = csv.writer(buffer, delimiter=delimiter)
     writer.writerow(CSV_HEADER)
     for pv in report:
         writer.writerow(

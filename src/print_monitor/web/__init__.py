@@ -277,7 +277,13 @@ def create_app(
             )
         finally:
             db.close()
-        csv_text = report_to_csv(report, filters["year"], filters["month"])
+        csv_text = report_to_csv(
+            report,
+            filters["year"],
+            filters["month"],
+            delimiter=";",
+            include_bom=True,
+        )
         filename = f"relatorio-{filters['year']}-{filters['month']:02d}.csv"
         return Response(
             csv_text,
@@ -479,11 +485,18 @@ def create_app(
             result = import_printers_from_csv(db, text)
         finally:
             db.close()
-        flash(
+        import_message = (
             f"Importadas: {result.added}; já cadastradas: {result.skipped}; "
-            f"com erro: {len(result.errors)}.",
-            "ok" if not result.errors else "erro",
+            f"com erro: {len(result.errors)}."
         )
+        if result.errors:
+            details = " ".join(
+                f"Linha {line_no}: {message}" for line_no, message in result.errors[:5]
+            )
+            import_message += f" {details}"
+            if len(result.errors) > 5:
+                import_message += f" Mais {len(result.errors) - 5} erro(s) não exibido(s)."
+        flash(import_message, "ok" if not result.errors else "erro")
         return redirect(url_for("printers_view"))
 
     @app.route("/printers/<int:printer_id>/toggle", methods=["POST"])

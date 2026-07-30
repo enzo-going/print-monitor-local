@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from print_monitor.db import Database
+from print_monitor.models import MAX_COUNTER
 
 pytest.importorskip("flask")
 
@@ -78,8 +79,9 @@ def test_export_csv(app_client):
     assert resp.status_code == 200
     assert resp.mimetype == "text/csv"
     assert "attachment" in resp.headers["Content-Disposition"]
-    body = resp.get_data(as_text=True)
-    assert "printer_id,name,ip" in body
+    assert resp.data.startswith(b"\xef\xbb\xbf")
+    body = resp.data.decode("utf-8-sig")
+    assert "printer_id;name;ip" in body
     assert "Alfa" in body
     assert "4500" in body
 
@@ -382,6 +384,29 @@ def test_manual_reading_and_ignore_restore_flow(client_and_db):
     assert "Leitura restaurada" in response.get_data(as_text=True)
 
 
+def test_manual_reading_rejects_counter_larger_than_sqlite_limit(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Limite", ip="192.0.2.37")
+    db.close()
+
+    response = client.post(
+        "/readings/add",
+        data={
+            "printer_id": str(pid),
+            "total_counter": str(MAX_COUNTER + 1),
+            "collected_at": "2026-07-01T00:00",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Contador invalido" in response.get_data(as_text=True)
+    db = Database(db_path)
+    assert db.list_readings(pid) == []
+    db.close()
+
+
 def test_month_navigation_preserves_active_filters(app_client):
     body = app_client.get("/?year=2026&month=6&printer_id=1&location=Financeiro").get_data(
         as_text=True
@@ -526,6 +551,28 @@ def test_import_printers_via_upload(client_and_db):
     assert "Importadas: 1" in resp.get_data(as_text=True)
     db = Database(db_path)
     assert db.get_printer_by_ip("192.0.2.80") is not None
+    db.close()
+
+
+def test_import_upload_shows_line_details_for_missing_ip(client_and_db):
+    import io
+
+    client, db_path = client_and_db
+    csv_bytes = b"SETOR;MODELO;IP\nFinanceiro;Modelo X;\n"
+
+    response = client.post(
+        "/printers/import",
+        data={"file": (io.BytesIO(csv_bytes), "impressoras.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "com erro: 1" in body
+    assert "Linha 2: IP não informado" in body
+    db = Database(db_path)
+    assert db.list_printers() == []
     db.close()
 
 
