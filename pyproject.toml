@@ -19,8 +19,8 @@ dependencies = []
 [project.optional-dependencies]
 # Dashboard local (Fase 2).
 dashboard = ["flask>=3.0"]
-# Empacotamento Windows (Fase 5).
-build = ["pyinstaller>=6.0"]
+# Empacotamento Windows (Fase 5): dependencias completas do mini app.
+build = ["flask>=3.0", "pyinstaller>=6.0", "pywebview>=5.0"]
 # Ferramentas de desenvolvimento e testes.
 dev = ["pytest>=8.0", "ruff>=0.16"]
 
