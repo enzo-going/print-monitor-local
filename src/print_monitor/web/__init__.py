@@ -211,6 +211,10 @@ def create_app(
         ranking = [item for item in measured if item.volume > 0]
         total = sum(item.volume for item in measured)
         partial_count = sum(item.state == "partial" for item in measured)
+        reset_count = sum(item.state == "counter_reset" for item in report)
+        conflict_count = sum(item.state == "conflicting_readings" for item in report)
+        review_count = reset_count + conflict_count
+        waiting_baseline_count = sum(item.state == "waiting_baseline" for item in report)
         previous_year, previous_month = _shift_month(filters["year"], filters["month"], -1)
         next_year, next_month = _shift_month(filters["year"], filters["month"], 1)
         now_local = datetime.now(display_timezone)
@@ -237,6 +241,10 @@ def create_app(
             has_measured_data=bool(measured),
             measurable_count=len(measured),
             partial_count=partial_count,
+            reset_count=reset_count,
+            conflict_count=conflict_count,
+            review_count=review_count,
+            waiting_baseline_count=waiting_baseline_count,
             printers=printers,
             printer_by_id={printer.id: printer for printer in printers},
             filters=filters,
@@ -579,6 +587,13 @@ def create_app(
             redirect_params["year"] = year
         if month and 1 <= month <= 12:
             redirect_params["month"] = month
+        printer_id = _parse_int(request.form.get("printer_id"))
+        if printer_id is not None:
+            redirect_params["printer_id"] = printer_id
+        for key in ("ip", "location"):
+            value = (request.form.get(key) or "").strip()
+            if value:
+                redirect_params[key] = value
         return redirect(url_for("index", **redirect_params))
 
     # -- descoberta ------------------------------------------------------

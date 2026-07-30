@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -49,6 +50,13 @@ def test_index_out_of_range_params_do_not_500(app_client):
     # Ano/mes fora do intervalo (URL montada a mao) sao saneados, sem erro 500.
     assert app_client.get("/?year=0&month=99").status_code == 200
     assert app_client.get("/?year=99999&month=6").status_code == 200
+
+
+def test_index_supports_december_of_year_9999(app_client):
+    response = app_client.get("/?year=9999&month=12")
+
+    assert response.status_code == 200
+    assert "Dezembro de 9999" in response.get_data(as_text=True)
 
 
 def test_printers_view(app_client):
@@ -243,6 +251,39 @@ def test_single_reading_is_shown_as_waiting_not_monthly_zero(client_and_db):
     assert "O contador acumulado não é o total do mês" in body
 
 
+def test_reset_is_shown_as_review_instead_of_missing_baseline(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Reset", ip="192.0.2.34")
+    db.add_reading(pid, 10_000, collected_at=datetime(2026, 7, 1, tzinfo=UTC))
+    db.add_reading(pid, 100, collected_at=datetime(2026, 7, 2, tzinfo=UTC))
+    db.close()
+
+    body = client.get("/?year=2026&month=7").get_data(as_text=True)
+
+    assert "Revisão necessária" in body
+    assert "pode indicar reset, troca ou leitura incorreta" in body
+    assert "Esses resultados não entram no total consolidado" in body
+    assert "É preciso ter ao menos dois contadores" not in body
+
+
+def test_conflicting_readings_are_excluded_and_explained(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Conflito", ip="192.0.2.35")
+    same_moment = datetime(2026, 7, 15, 9, 30, tzinfo=UTC)
+    db.add_reading(pid, 10_000, collected_at=same_moment)
+    db.add_reading(pid, 10_500, collected_at=same_moment)
+    db.close()
+
+    body = client.get("/?year=2026&month=7").get_data(as_text=True)
+
+    assert "Revisão necessária" in body
+    assert "contadores diferentes registrados" in body
+    assert "Leituras conflitantes" in body
+    assert "Esses resultados não entram no total consolidado" in body
+
+
 def test_manual_reading_and_ignore_restore_flow(client_and_db):
     client, db_path = client_and_db
     db = Database(db_path)
@@ -290,6 +331,35 @@ def test_dashboard_uses_configured_backend(app_client):
     app_client.application.config["DEFAULT_BACKEND"] = "mock"
     body = app_client.get("/?year=2026&month=6").get_data(as_text=True)
     assert 'name="backend" value="mock"' in body
+
+
+def test_collect_redirect_preserves_all_dashboard_filters(client_and_db):
+    client, db_path = client_and_db
+    db = Database(db_path)
+    pid = db.add_printer(name="Contexto", ip="192.0.2.36", location="Arquivo")
+    db.close()
+
+    response = client.post(
+        "/collect",
+        data={
+            "backend": "mock",
+            "year": "2026",
+            "month": "7",
+            "printer_id": str(pid),
+            "ip": "192.0.2",
+            "location": "Arquivo",
+        },
+    )
+
+    assert response.status_code == 302
+    query = parse_qs(urlsplit(response.headers["Location"]).query)
+    assert query == {
+        "year": ["2026"],
+        "month": ["7"],
+        "printer_id": [str(pid)],
+        "ip": ["192.0.2"],
+        "location": ["Arquivo"],
+    }
 
 
 def test_ignore_redirect_preserves_dashboard_context(client_and_db):

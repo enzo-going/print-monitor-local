@@ -14,7 +14,7 @@ import calendar
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
-from itertools import pairwise
+from itertools import groupby, pairwise
 
 from .db import Database
 from .models import Printer, Reading
@@ -40,10 +40,15 @@ def month_bounds(
     if not 1 <= year <= 9999:
         raise ValueError("Ano fora do intervalo suportado (1-9999).")
     start_local = datetime(year, month, 1, tzinfo=timezone)
-    last_day = calendar.monthrange(year, month)[1]
-    next_month_local = datetime(year, month, last_day, tzinfo=timezone) + timedelta(days=1)
     start = start_local.astimezone(UTC)
-    end = next_month_local.astimezone(UTC) - timedelta(microseconds=1)
+    if year == 9999 and month == 12:
+        # Nao existe 01/01/10000 em ``datetime``. O maior instante UTC
+        # representavel ainda fornece um limite inclusivo seguro para a consulta.
+        end = datetime.max.replace(tzinfo=UTC)
+    else:
+        last_day = calendar.monthrange(year, month)[1]
+        next_month_local = datetime(year, month, last_day, tzinfo=timezone) + timedelta(days=1)
+        end = next_month_local.astimezone(UTC) - timedelta(microseconds=1)
     return start, end
 
 
@@ -68,6 +73,8 @@ def period_usage(readings: list[Reading], start: datetime, end: datetime) -> Per
     Usa a ultima leitura anterior ao inicio como linha de base. Sem ela, duas
     leituras dentro do periodo ainda produzem um resultado parcial. Uma leitura
     isolada nao e apresentada como zero: o estado fica ``waiting_baseline``.
+    Leituras identicas no mesmo instante formam um unico ponto; contadores
+    divergentes nesse instante exigem revisao (``conflicting_readings``).
     """
     ordered = sorted(
         (r for r in readings if r.collected_at <= end and not r.ignored),
@@ -75,12 +82,40 @@ def period_usage(readings: list[Reading], start: datetime, end: datetime) -> Per
     )
     previous = [r for r in ordered if r.collected_at < start]
     in_period = [r for r in ordered if start <= r.collected_at <= end]
-    baseline = previous[-1] if previous else None
+    baseline_points: list[Reading] = []
+    if previous:
+        baseline_moment = previous[-1].collected_at
+        baseline_points = [
+            reading for reading in previous if reading.collected_at == baseline_moment
+        ]
     # Uma leitura exatamente na abertura do mes e uma linha de base melhor do
     # que qualquer ponto anterior: nao atribua ao mes o delta antes da fronteira.
     if in_period and in_period[0].collected_at == start:
-        baseline = None
-    points = ([baseline] if baseline else []) + in_period
+        baseline_points = []
+    raw_points = baseline_points + in_period
+    points: list[Reading] = []
+    conflicting_readings = False
+    for _, same_moment in groupby(raw_points, key=lambda reading: reading.collected_at):
+        readings_at_moment = list(same_moment)
+        if len({reading.total_counter for reading in readings_at_moment}) > 1:
+            conflicting_readings = True
+        # Leituras repetidas e identicas no mesmo instante representam um unico
+        # ponto temporal. Em caso de conflito, mantemos a mais recente somente
+        # para descrever a cobertura; o resultado sera marcado como nao mensuravel.
+        points.append(readings_at_moment[-1])
+
+    if conflicting_readings:
+        return PeriodUsage(
+            volume=0,
+            measurable=False,
+            state="conflicting_readings",
+            readings_in_period=len(in_period),
+            opening_counter=points[0].total_counter if points else None,
+            closing_counter=points[-1].total_counter if points else None,
+            coverage_start=points[0].collected_at if points else None,
+            coverage_end=points[-1].collected_at if points else None,
+        )
+
     if len(points) < 2:
         only = in_period[-1] if in_period else None
         return PeriodUsage(
