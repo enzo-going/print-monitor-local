@@ -111,9 +111,10 @@ python -m print_monitor report --year 2026 --month 6
 
 A coleta real usa SNMP (v1/v2c) e é implementada em **Python puro** sobre a
 biblioteca padrão (sem dependências nativas), o que simplifica o empacotamento.
-Por padrão lê o OID `prtMarkerLifeCount` (Printer-MIB, RFC 3805). A *community
-string* e os tempos de espera vêm do ambiente ou do `.env` (ver `.env.example`),
-nunca do código.
+Por padrão usa SNMP v2c e lê o OID `prtMarkerLifeCount` (Printer-MIB, RFC 3805).
+Equipamentos antigos que aceitam somente v1 podem usar `SNMP_VERSION=1`; os
+demais devem manter `SNMP_VERSION=2c`. A *community string* e os tempos de espera
+vêm do ambiente ou do `.env` (ver `.env.example`), nunca do código.
 
 Impressoras incompatíveis ou inacessíveis são registradas como falha sem
 interromper a coleta das demais. As consultas rodam em paralelo (8 por padrão)

@@ -61,6 +61,7 @@ class Config:
     snmp_timeout: float
     snmp_retries: int
     collection_workers: int = 8
+    snmp_version: str = "2c"
 
 
 def _env_number(
@@ -94,6 +95,9 @@ def load_config() -> Config:
     backend = os.environ.get("PRINT_MONITOR_BACKEND", "snmp").strip().lower()
     if backend not in {"mock", "snmp"}:
         raise ValueError(f"PRINT_MONITOR_BACKEND deve ser 'mock' ou 'snmp'; recebido {backend!r}.")
+    snmp_version = os.environ.get("SNMP_VERSION", "2c").strip().lower()
+    if snmp_version not in {"1", "2c"}:
+        raise ValueError(f"SNMP_VERSION deve ser '1' ou '2c'; recebido {snmp_version!r}.")
 
     return Config(
         db_path=db_path,
@@ -105,4 +109,5 @@ def load_config() -> Config:
         collection_workers=int(
             _env_number("PRINT_MONITOR_WORKERS", "8", int, minimum=1, maximum=128)
         ),
+        snmp_version=snmp_version,
     )

@@ -144,7 +144,12 @@ def _encode_oid(oid: str) -> bytes:
 
 
 def _version_code(version: str) -> int:
-    return 0 if str(version) in ("1", "v1") else 1
+    normalized = str(version).strip().lower()
+    if normalized == "1":
+        return 0
+    if normalized == "2c":
+        return 1
+    raise ValueError(f"Versao SNMP invalida: {version!r}. Use '1' ou '2c'.")
 
 
 def build_get_request(community: str, oid: str, request_id: int, version: str = "2c") -> bytes:
@@ -298,48 +303,87 @@ def snmp_get(
     request_id = random.randint(1, 0x7FFFFFFF)
     packet = build_get_request(community, oid, request_id, version)
 
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        for _ in range(max(1, retries + 1)):
+    try:
+        address_infos = socket.getaddrinfo(
+            host,
+            port,
+            family=socket.AF_UNSPEC,
+            type=socket.SOCK_DGRAM,
+            proto=socket.IPPROTO_UDP,
+        )
+    except OSError as exc:
+        raise SNMPError(f"Erro de rede ao resolver {host}: {exc}") from exc
+    if not address_infos:
+        raise SNMPError(f"Nenhum endereco UDP encontrado para {host}:{port}.")
+
+    network_errors: list[OSError] = []
+    endpoint_timed_out = False
+    for family, socktype, proto, _canonical_name, sockaddr in address_infos:
+        with socket.socket(family, socktype, proto) as sock:
             try:
-                sock.sendto(packet, (host, port))
+                # UDP conectado restringe as respostas ao mesmo IP e porta de
+                # destino e funciona tanto com endpoints IPv4 quanto IPv6.
+                sock.connect(sockaddr)
             except OSError as exc:
-                raise SNMPError(f"Erro de rede ao consultar {host}: {exc}") from exc
+                network_errors.append(exc)
+                continue
 
-            # Aguarda a resposta CORRETA: mesmo request-id e mesma origem.
-            # Pacotes tardios/duplicados de outras consultas sao descartados,
-            # evitando leituras trocadas em coletas sequenciais rapidas.
-            deadline = time.monotonic() + timeout
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                sock.settimeout(remaining)
+            endpoint_failed = False
+            for _ in range(max(1, retries + 1)):
                 try:
-                    data, addr = sock.recvfrom(65535)
-                except TimeoutError:
-                    break
+                    sock.send(packet)
                 except OSError as exc:
-                    raise SNMPError(f"Erro de rede ao consultar {host}: {exc}") from exc
-                if addr[0] != host:
-                    continue  # resposta de outra origem
-                try:
-                    resp_id, error_status, varbinds = parse_response(data)
-                except (SNMPError, IndexError, ValueError):
-                    continue  # pacote malformado/estranho
-                if resp_id != request_id:
-                    continue  # resposta de uma consulta anterior
+                    network_errors.append(exc)
+                    endpoint_failed = True
+                    break
 
-                if error_status != 0:
-                    raise SNMPError(f"Agente retornou erro SNMP {error_status} para {oid}.")
-                if not varbinds:
-                    raise SNMPError("Resposta SNMP sem varbinds.")
-                _, value = varbinds[0]
-                if value is None:
-                    raise SNMPError(f"OID nao suportado pela impressora: {oid}.")
-                if not isinstance(value, int):
-                    raise SNMPError(f"Valor nao numerico retornado para {oid}.")
-                return value
+                # Aguarda a resposta CORRETA: mesmo request-id. A conexao UDP
+                # ja filtra datagramas de outra origem ou porta.
+                deadline = time.monotonic() + timeout
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    sock.settimeout(remaining)
+                    try:
+                        data = sock.recv(65535)
+                    except TimeoutError:
+                        break
+                    except OSError as exc:
+                        network_errors.append(exc)
+                        endpoint_failed = True
+                        break
+                    try:
+                        resp_id, error_status, varbinds = parse_response(data)
+                    except (SNMPError, IndexError, ValueError):
+                        continue  # pacote malformado/estranho
+                    if resp_id != request_id:
+                        continue  # resposta de uma consulta anterior
 
+                    if error_status != 0:
+                        raise SNMPError(f"Agente retornou erro SNMP {error_status} para {oid}.")
+                    if not varbinds:
+                        raise SNMPError("Resposta SNMP sem varbinds.")
+                    response_oid, value = varbinds[0]
+                    if response_oid != oid:
+                        raise SNMPError(
+                            f"Resposta SNMP retornou OID inesperado: {response_oid or '<vazio>'}."
+                        )
+                    if value is None:
+                        raise SNMPError(f"OID nao suportado pela impressora: {oid}.")
+                    if not isinstance(value, int):
+                        raise SNMPError(f"Valor nao numerico retornado para {oid}.")
+                    return value
+                if endpoint_failed:
+                    break
+            if not endpoint_failed:
+                endpoint_timed_out = True
+
+    if endpoint_timed_out:
+        raise SNMPTimeout(f"Sem resposta de {host}:{port} para {oid}.")
+    if network_errors:
+        error = network_errors[-1]
+        raise SNMPError(f"Erro de rede ao consultar {host}: {error}") from error
     raise SNMPTimeout(f"Sem resposta de {host}:{port} para {oid}.")
 
 
@@ -366,7 +410,7 @@ class SNMPBackend:
                     port=self.config.snmp_port,
                     timeout=self.config.snmp_timeout,
                     retries=self.config.snmp_retries,
-                    version="2c",
+                    version=self.config.snmp_version,
                 )
             except SNMPError as exc:
                 last_error = exc
