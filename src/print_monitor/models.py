@@ -9,6 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+MAX_COUNTER = (1 << 63) - 1
+
+
+def validate_counter(value: object) -> int:
+    """Valida um contador que possa ser persistido como INTEGER no SQLite."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_COUNTER:
+        raise ValueError(f"Contador invalido: informe um inteiro entre 0 e {MAX_COUNTER}.")
+    return value
+
 
 @dataclass(frozen=True)
 class Printer:

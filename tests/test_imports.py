@@ -62,6 +62,20 @@ def test_import_ignores_blank_lines(db):
     assert result.added == 2
 
 
+def test_import_reports_filled_row_without_ip(db):
+    result = import_printers_from_csv(db, "SETOR;MODELO;IP\nFinanceiro;Modelo X;\n")
+
+    assert result.added == 0
+    assert result.errors == [(2, "IP não informado.")]
+
+
+def test_import_reports_empty_file(db):
+    result = import_printers_from_csv(db, "\ufeff \r\n")
+
+    assert result.added == 0
+    assert result.errors == [(1, "O arquivo CSV está vazio.")]
+
+
 def test_decode_bytes_handles_bom_and_cp1252():
     assert decode_bytes("SETOR\nTI".encode("utf-8-sig")).startswith("SETOR")
     assert "Á" in decode_bytes("Á".encode("cp1252"))

@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from print_monitor.models import MAX_COUNTER
+
 
 def _dt(year, month, day) -> datetime:
     return datetime(year, month, day, tzinfo=UTC)
@@ -65,6 +67,37 @@ def test_add_readings_batches_in_one_call(db):
 
     assert len(ids) == 2
     assert [r.total_counter for r in db.list_readings(pid)] == [100, 200]
+
+
+def test_counter_must_fit_sqlite_integer(db):
+    pid = db.add_printer(name="HP 1", ip="192.168.0.12")
+
+    with pytest.raises(ValueError, match="Contador invalido"):
+        db.add_reading(pid, MAX_COUNTER + 1)
+
+    assert db.list_readings(pid) == []
+
+
+def test_conditional_batch_skips_inactive_or_removed_printers(db):
+    active = db.add_printer(name="Ativa", ip="192.168.0.13")
+    paused = db.add_printer(name="Pausada", ip="192.168.0.14")
+    removed = db.add_printer(name="Removida", ip="192.168.0.15")
+    db.set_printer_active(paused, False)
+    db.delete_printer(removed)
+
+    ids = db.add_readings_if_printers_active(
+        [
+            (active, 100, _dt(2026, 6, 1), "snmp"),
+            (paused, 200, _dt(2026, 6, 1), "snmp"),
+            (removed, 300, _dt(2026, 6, 1), "snmp"),
+        ]
+    )
+
+    assert ids[0] is not None
+    assert ids[1:] == [None, None]
+    assert [(reading.printer_id, reading.total_counter) for reading in db.list_readings()] == [
+        (active, 100)
+    ]
 
 
 def test_list_readings_period_filter(db):

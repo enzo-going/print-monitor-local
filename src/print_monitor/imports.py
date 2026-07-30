@@ -83,6 +83,15 @@ def _build_column_map(fieldnames: list[str]) -> dict[str, str]:
     return mapping
 
 
+def _row_has_content(row: dict[str | None, str | list[str] | None]) -> bool:
+    """Distingue uma linha vazia de uma linha preenchida sem IP."""
+    for cell in row.values():
+        values = cell if isinstance(cell, list) else [cell]
+        if any(str(value).strip() for value in values if value is not None):
+            return True
+    return False
+
+
 def import_printers_from_csv(db: Database, csv_text: str) -> ImportResult:
     """Importa impressoras de um texto CSV, ignorando IPs ja cadastrados.
 
@@ -92,6 +101,7 @@ def import_printers_from_csv(db: Database, csv_text: str) -> ImportResult:
     result = ImportResult()
     text = csv_text.lstrip("﻿")
     if not text.strip():
+        result.errors.append((1, "O arquivo CSV está vazio."))
         return result
 
     delimiter = _detect_delimiter(text)
@@ -111,7 +121,9 @@ def import_printers_from_csv(db: Database, csv_text: str) -> ImportResult:
     for line_no, row in enumerate(reader, start=2):
         ip = value(row, "ip")
         if not ip:
-            continue  # linha vazia / sem IP, ignora silenciosamente
+            if _row_has_content(row):
+                result.errors.append((line_no, "IP não informado."))
+            continue
 
         name = value(row, "name") or value(row, "location")
         location = value(row, "location") or None

@@ -3,6 +3,44 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.2.0] — 2026-07-30
+
+### Adicionado
+
+- Edição de nome, IP, local, modelo e número de série sem apagar o histórico
+  nem alterar o estado ativo ou pausado da impressora.
+- Configuração `SNMP_VERSION`, com suporte explícito a equipamentos SNMP v1 e
+  v2c, além de transporte IPv4 e IPv6.
+- Workflow de Release que valida a versão, constrói o executável em um runner
+  Windows limpo e publica o `.exe` acompanhado do checksum SHA-256.
+- Validação de wheel e do executável Windows no CI.
+
+### Alterado
+
+- O horário de cada leitura passa a representar a chegada da resposta do
+  equipamento, preservando a ordem correta em coletas simultâneas.
+- O painel diferencia linha de base ausente, reset e leituras conflitantes no
+  mesmo horário, mantendo resultados não consolidados fora do total.
+- A exportação baixada pelo painel usa UTF-8 com BOM e separador `;`, facilitando
+  a abertura direta no Excel em português.
+- Cadastro e edição compartilham normalização e limites de tamanho dos campos.
+
+### Corrigido
+
+- Pausar ou remover uma impressora durante a consulta deixa de reverter as
+  leituras válidas das demais impressoras do lote.
+- Contadores fora do intervalo aceito pelo SQLite são recusados com mensagem
+  controlada, sem causar erro 500 ou perder outras leituras.
+- A coleta SNMP rejeita respostas de outra porta ou com OID divergente.
+- Contadores diferentes registrados no mesmo instante deixam de produzir um
+  volume mensal falso.
+- Filtros de impressora, IP e local são preservados depois de coletar.
+- Dezembro de 9999 deixa de causar estouro no cálculo dos limites mensais.
+- A importação informa linhas preenchidas sem IP, arquivos vazios e os primeiros
+  detalhes de erro diretamente na interface.
+- O build Windows interrompe imediatamente em falhas nativas, remove artefatos
+  antigos e só anuncia sucesso após validar o novo executável.
+
 ## [1.1.0] — 2026-07-29
 
 ### Adicionado

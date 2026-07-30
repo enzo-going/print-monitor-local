@@ -65,6 +65,7 @@ def _try_snmp_counter(ip: str, config: Config | None) -> int | None:
     community = config.snmp_community if config else "public"
     port = config.snmp_port if config else 161
     timeout = config.snmp_timeout if config else 2
+    version = config.snmp_version if config else "2c"
     try:
         return snmp_get(
             ip,
@@ -73,6 +74,7 @@ def _try_snmp_counter(ip: str, config: Config | None) -> int | None:
             port=port,
             timeout=timeout,
             retries=0,
+            version=version,
         )
     except SNMPError:
         return None
