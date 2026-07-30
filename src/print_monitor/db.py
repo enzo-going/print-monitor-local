@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Self
 
-from .models import Printer, Reading, ReadingSummary
+from .models import Printer, Reading, ReadingSummary, validate_counter
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS printers (
@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS reading_ignores (
 _INSERT_READING = """
 INSERT INTO readings (printer_id, total_counter, collected_at, source)
 VALUES (?, ?, ?, ?)
+"""
+
+_INSERT_READING_IF_ACTIVE = """
+INSERT INTO readings (printer_id, total_counter, collected_at, source)
+SELECT ?, ?, ?, ?
+WHERE EXISTS (
+    SELECT 1 FROM printers WHERE id = ? AND active = 1
+)
 """
 
 
@@ -172,6 +180,7 @@ class Database:
     ) -> int:
         """Registra uma leitura do contador total."""
         collected_at = collected_at or utcnow()
+        total_counter = validate_counter(total_counter)
         cur = self.conn.execute(
             _INSERT_READING,
             (printer_id, total_counter, _to_iso(collected_at), source),
@@ -187,11 +196,43 @@ class Database:
         ids: list[int] = []
         try:
             for printer_id, total_counter, collected_at, source in readings:
+                total_counter = validate_counter(total_counter)
                 cur = self.conn.execute(
                     _INSERT_READING,
                     (printer_id, total_counter, _to_iso(collected_at), source),
                 )
                 ids.append(int(cur.lastrowid))
+        except Exception:
+            self.conn.rollback()
+            raise
+        self.conn.commit()
+        return ids
+
+    def add_readings_if_printers_active(
+        self,
+        readings: Iterable[tuple[int, int, datetime, str]],
+    ) -> list[int | None]:
+        """Grava em lote e ignora equipamentos removidos ou pausados durante a coleta.
+
+        Cada ``None`` mantém o alinhamento com a entrada e indica que a impressora
+        deixou de estar ativa antes da persistência. A verificação e a inserção
+        acontecem na mesma instrução SQL, evitando a janela entre consultar e gravar.
+        """
+        ids: list[int | None] = []
+        try:
+            for printer_id, total_counter, collected_at, source in readings:
+                total_counter = validate_counter(total_counter)
+                cur = self.conn.execute(
+                    _INSERT_READING_IF_ACTIVE,
+                    (
+                        printer_id,
+                        total_counter,
+                        _to_iso(collected_at),
+                        source,
+                        printer_id,
+                    ),
+                )
+                ids.append(int(cur.lastrowid) if cur.rowcount > 0 else None)
         except Exception:
             self.conn.rollback()
             raise
