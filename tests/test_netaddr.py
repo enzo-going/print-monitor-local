@@ -20,18 +20,18 @@ from print_monitor.netaddr import (
     "entrada, esperado",
     [
         ("192.168.0.10", "192.168.0.10"),
-        ("  192.168.0.10  ", "192.168.0.10"),          # espacos ao colar
-        ("192,168,0,10", "192.168.0.10"),              # virgula no lugar do ponto
-        ("192.168.0.010", "192.168.0.10"),             # zero a esquerda
+        ("  192.168.0.10  ", "192.168.0.10"),  # espacos ao colar
+        ("192,168,0,10", "192.168.0.10"),  # virgula no lugar do ponto
+        ("192.168.0.010", "192.168.0.10"),  # zero a esquerda
         ("192.168.020.005", "192.168.20.5"),
-        ("http://192.168.0.10", "192.168.0.10"),       # copiado do navegador
+        ("http://192.168.0.10", "192.168.0.10"),  # copiado do navegador
         ("https://192.168.0.10/ipp/print", "192.168.0.10"),
-        ("192.168.0.10:9100", "192.168.0.10"),         # porta colada no fim
-        ("192.168.O.1O", "192.168.0.10"),              # letra O no lugar do zero
-        ("l92.l68.0.10", "192.168.0.10"),              # letra l no lugar do um
-        ("192 168 0 10", "192.168.0.10"),              # espaco como separador
-        ("192.168..0.10", "192.168.0.10"),             # ponto duplicado
-        ("<192.168.0.10>", "192.168.0.10"),            # colado de um e-mail
+        ("192.168.0.10:9100", "192.168.0.10"),  # porta colada no fim
+        ("192.168.O.1O", "192.168.0.10"),  # letra O no lugar do zero
+        ("l92.l68.0.10", "192.168.0.10"),  # letra l no lugar do um
+        ("192 168 0 10", "192.168.0.10"),  # espaco como separador
+        ("192.168..0.10", "192.168.0.10"),  # ponto duplicado
+        ("<192.168.0.10>", "192.168.0.10"),  # colado de um e-mail
     ],
 )
 def test_normaliza_erros_comuns(entrada, esperado):
@@ -80,11 +80,11 @@ def test_is_valid_ip():
     "entrada, esperado",
     [
         ("192.168.0.0/24", "192.168.0.0/24"),
-        ("192.168.0", "192.168.0.0/24"),          # sem o ultimo numero
-        ("192.168.0.*", "192.168.0.0/24"),        # curinga
+        ("192.168.0", "192.168.0.0/24"),  # sem o ultimo numero
+        ("192.168.0.*", "192.168.0.0/24"),  # curinga
         ("192.168.0.x", "192.168.0.0/24"),
-        ("192.168.0.1-254", "192.168.0.0/24"),    # faixa com hifen
-        ("192.168.0.35", "192.168.0.0/24"),       # um host: usa a rede dele
+        ("192.168.0.1-254", "192.168.0.0/24"),  # faixa com hifen
+        ("192.168.0.35", "192.168.0.0/24"),  # um host: usa a rede dele
         ("10.0.0.0/16", "10.0.0.0/16"),
         ("  192.168.0.0 / 24  ", "192.168.0.0/24"),
     ],

@@ -174,9 +174,7 @@ def normalize_network(value: str) -> str:
     text = re.sub(r"\s+", "", text)
 
     if not text:
-        raise IPError(
-            "Informe a faixa de rede a procurar (exemplo: 192.168.0.0/24)."
-        )
+        raise IPError("Informe a faixa de rede a procurar (exemplo: 192.168.0.0/24).")
 
     # Faixa com hifen: usa a rede /24 que contem o endereco inicial.
     match = _RANGE_DASH.match(text)
@@ -190,8 +188,7 @@ def normalize_network(value: str) -> str:
         addr, _, prefix = text.partition("/")
         if not prefix.isdigit():
             raise IPError(
-                f"A faixa “{original}” tem um prefixo inválido. "
-                "Use algo como 192.168.0.0/24."
+                f"A faixa “{original}” tem um prefixo inválido. Use algo como 192.168.0.0/24."
             )
         try:
             addr = normalize_ip(addr)
@@ -214,8 +211,7 @@ def normalize_network(value: str) -> str:
         )
     elif dots != 3:
         raise IPError(
-            f"Não entendi a faixa “{original}”. Use algo como 192.168.0.0/24 "
-            "ou apenas 192.168.0."
+            f"Não entendi a faixa “{original}”. Use algo como 192.168.0.0/24 ou apenas 192.168.0."
         )
 
     addr = normalize_ip(text)
