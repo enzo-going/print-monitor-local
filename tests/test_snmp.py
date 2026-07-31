@@ -11,6 +11,8 @@ from print_monitor.config import Config
 from print_monitor.models import Printer
 from print_monitor.snmp import (
     OID_PRT_MARKER_LIFE_COUNT,
+    OID_SYS_NAME,
+    VENDOR_TOTAL_COUNTER_OIDS,
     SNMPBackend,
     SNMPError,
     SNMPTimeout,
@@ -18,11 +20,46 @@ from print_monitor.snmp import (
     _encode_oid,
     build_get_request,
     build_get_response,
+    identify,
     parse_response,
+    read_total_counter,
     snmp_get,
+    snmp_get_text,
 )
 
 OID = OID_PRT_MARKER_LIFE_COUNT
+
+
+def _fake_agent(valores: dict[str, int | bytes], respostas: int = 1):
+    """Agente SNMP de mentira: responde os OIDs de ``valores`` e ignora os demais.
+
+    Ignorar em silencio e o comportamento de um agente real diante de um OID que
+    ele nao implementa, que e justamente o caso que a busca por OIDs de
+    fabricante precisa atravessar.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+
+    def serve():
+        for _ in range(respostas):
+            try:
+                data, addr = sock.recvfrom(65535)
+            except OSError:
+                return
+            req_id, _, varbinds = parse_response(data)
+            oid = varbinds[0][0]
+            if oid not in valores:
+                continue
+            try:
+                sock.sendto(
+                    build_get_response("public", oid, valores[oid], request_id=req_id), addr
+                )
+            except OSError:
+                return
+
+    threading.Thread(target=serve, daemon=True).start()
+    return sock, port
 
 
 def test_oid_encode_decode_roundtrip():
@@ -250,3 +287,73 @@ def test_snmp_backend_raises_on_unsupported_oid():
             backend.read_total_counter(printer)
     finally:
         sock.close()
+
+
+# -- OIDs de fabricante e identificacao -----------------------------------
+
+
+def test_snmp_get_text_decodifica_string():
+    sock, port = _fake_agent({OID_SYS_NAME: b"RICOH-RECEPCAO\x00"})
+    try:
+        nome = snmp_get_text("127.0.0.1", OID_SYS_NAME, port=port, timeout=2.0)
+    finally:
+        sock.close()
+    assert nome == "RICOH-RECEPCAO"
+
+
+def test_read_total_counter_usa_o_oid_padrao_primeiro():
+    sock, port = _fake_agent({OID: 555000})
+    try:
+        resultado = read_total_counter("127.0.0.1", port=port, timeout=1.0, retries=0)
+    finally:
+        sock.close()
+    assert resultado == (555000, OID)
+
+
+def test_read_total_counter_cai_para_oid_de_fabricante():
+    """Equipamento que responde, mas nao implementa a Printer-MIB completa."""
+    _rotulo, oid_ricoh = VENDOR_TOTAL_COUNTER_OIDS[2]
+    # O agente responde o OID padrao com um texto (valor nao numerico), que e
+    # um erro e nao um silencio: o codigo deve seguir tentando os demais.
+    sock, port = _fake_agent({OID: b"nao suportado", oid_ricoh: 4242}, respostas=12)
+    try:
+        valor, usado = read_total_counter("127.0.0.1", port=port, timeout=0.5, retries=0)
+    finally:
+        sock.close()
+    assert (valor, usado) == (4242, oid_ricoh)
+
+
+def test_read_total_counter_sem_resposta_orienta_o_usuario():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    try:
+        with pytest.raises(SNMPTimeout, match="SNMP esta habilitado"):
+            read_total_counter("127.0.0.1", port=port, timeout=0.3, retries=0)
+    finally:
+        sock.close()
+
+
+def test_identify_le_o_que_conseguir_sem_falhar():
+    sock, port = _fake_agent({OID_SYS_NAME: b"RICOH-RECEPCAO", OID: 4200}, respostas=16)
+    try:
+        ident = identify("127.0.0.1", port=port, timeout=0.4)
+    finally:
+        sock.close()
+    assert ident.name == "RICOH-RECEPCAO"
+    assert ident.counter == 4200
+    assert ident.suggested_name == "RICOH-RECEPCAO"
+    assert ident.responded is True
+    assert ident.serial is None  # OID nao respondido, sem erro
+
+
+def test_identity_sem_resposta_sugere_nome_pelo_ip():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    try:
+        ident = identify("127.0.0.1", port=port, timeout=0.2)
+    finally:
+        sock.close()
+    assert ident.responded is False
+    assert ident.suggested_name == "Impressora 127.0.0.1"
