@@ -92,6 +92,9 @@ python -m print_monitor serve
 
 # 8. Descobrir impressoras em uma sub-rede (abordagem segura)
 python -m print_monitor discover --network 192.168.0.0/24 --snmp
+
+# 9. Diagnosticar um endereço: o que esta impressora responde?
+python -m print_monitor test 192.168.0.50
 ```
 
 > O dashboard exige o extra opcional `dashboard`: `pip install -e ".[dashboard]"`.
@@ -114,10 +117,21 @@ python -m print_monitor report --year 2026 --month 6
 
 A coleta real usa SNMP (v1/v2c) e é implementada em **Python puro** sobre a
 biblioteca padrão (sem dependências nativas), o que simplifica o empacotamento.
-Por padrão usa SNMP v2c e lê o OID `prtMarkerLifeCount` (Printer-MIB, RFC 3805).
-Equipamentos antigos que aceitam somente v1 podem usar `SNMP_VERSION=1`; os
-demais devem manter `SNMP_VERSION=2c`. A *community string* e os tempos de espera
-vêm do ambiente ou do `.env` (ver `.env.example`), nunca do código.
+Por padrão usa SNMP v2c. Equipamentos antigos que aceitam somente v1 podem usar
+`SNMP_VERSION=1`; os demais devem manter `SNMP_VERSION=2c`. A *community string*
+e os tempos de espera vêm do ambiente ou do `.env` (ver `.env.example`), nunca do
+código.
+
+O contador é lido primeiro pelo OID padrão `prtMarkerLifeCount` (Printer-MIB,
+RFC 3805). Quando o equipamento responde que não o implementa — comum em modelos
+de entrada — a leitura tenta os OIDs proprietários de **HP, Ricoh, Kyocera,
+Brother, Lexmark, Xerox, Samsung e Epson** antes de desistir. Se nem o OID padrão
+responder, a busca para imediatamente: o equipamento está inacessível, e insistir
+só faria o usuário esperar.
+
+A ferramenta também lê `sysName`, modelo e número de série, o que permite à
+descoberta sugerir “RICOH IM C3000 — Recepção” em vez de
+“Impressora 192.168.20.31”.
 
 Impressoras incompatíveis ou inacessíveis são registradas como falha sem
 interromper a coleta das demais. As consultas rodam em paralelo (8 por padrão)
@@ -157,6 +171,34 @@ conferir ou remover:
 Get-ScheduledTask -TaskName "PrintMonitor-Coleta"
 Unregister-ScheduledTask -TaskName "PrintMonitor-Coleta" -Confirm:$false
 ```
+
+## Entrada tolerante a erro de digitação
+
+Quem cadastra copia o IP de uma etiqueta, de um e-mail ou do painel do
+equipamento, e no caminho aparecem erros previsíveis. O campo aceita o endereço
+como estiver e corrige sozinho:
+
+| Você digita             | É salvo como   |
+|-------------------------|----------------|
+| ` 192.168.0.10 `        | `192.168.0.10` |
+| `192,168,0,10`          | `192.168.0.10` |
+| `192.168.O.1O`          | `192.168.0.10` |
+| `http://192.168.0.10`   | `192.168.0.10` |
+| `192.168.0.10:9100`     | `192.168.0.10` |
+| `192.168.020.005`       | `192.168.20.5` |
+
+O que não dá para interpretar vira uma mensagem dizendo o que corrigir — “falta
+1 número”, “o número 300 é maior que 255” — em vez de um “IP inválido” seco. O
+formulário mostra a correção enquanto você digita, consultando a mesma função
+usada no cadastro, para o aviso nunca discordar do que será salvo.
+
+A mesma tolerância vale para a faixa da busca na rede: `192.168.0`,
+`192.168.0.*` e `192.168.0.1-254` são aceitos além do CIDR clássico, e a tela já
+vem preenchida com a faixa deste computador.
+
+O botão **Testar conexão** consulta o endereço na hora e preenche nome, modelo e
+número de série com o que o equipamento publicar — descobrir ali que o IP está
+errado evita um mês inteiro de coletas vazias percebido só no fechamento.
 
 ## Como o volume é calculado
 

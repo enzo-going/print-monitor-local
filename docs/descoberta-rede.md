@@ -8,16 +8,46 @@ lendo o contador via SNMP.
 
 A implementação é deliberadamente conservadora:
 
-- **Faixa explícita**: exige um CIDR informado (`--network`); não varre redes
-  inteiras por conta própria.
+- **Faixa explícita**: exige uma faixa informada (`--network`); não varre redes
+  inteiras por conta própria. A tela sugere a faixa da própria máquina, mas quem
+  confirma é o usuário.
 - **Limite de tamanho**: recusa faixas maiores que `--max-hosts` (padrão 1024),
   evitando varreduras amplas (ex.: `/16`, `/8`).
 - **Sondagem leve**: apenas um pequeno conjunto de portas (9100 RAW/JetDirect,
   631 IPP, 515 LPD), com timeouts curtos e concorrência limitada.
 - **Somente TCP connect**: estabelece e encerra a conexão; não envia payloads
   nem explora serviços.
-- **Confirmação opcional**: com `--snmp`, tenta ler o contador total para
-  distinguir impressoras de outros dispositivos com essas portas.
+- **Somente leitura SNMP**: com `--snmp`, lê o contador e a identificação para
+  distinguir impressoras de outros dispositivos com essas portas. Nenhuma
+  escrita, nenhuma alteração no equipamento.
+
+## Formatos de faixa aceitos
+
+Exigir CIDR de quem nunca ouviu falar em CIDR era o maior obstáculo desta tela.
+`netaddr.normalize_network` aceita:
+
+| Você escreve      | Vira             |
+|-------------------|------------------|
+| `192.168.0.0/24`  | `192.168.0.0/24` |
+| `192.168.0`       | `192.168.0.0/24` |
+| `192.168.0.*`     | `192.168.0.0/24` |
+| `192.168.0.1-254` | `192.168.0.0/24` |
+| `192.168.0.35`    | `192.168.0.0/24` |
+
+Faixas ambíguas demais (`192.168`) são recusadas com uma mensagem explicando o
+que falta.
+
+## Confiança nos resultados
+
+Cada candidato recebe um rótulo, porque outros dispositivos também abrem
+631/515 e sem isso o usuário não tem como julgar o que vale cadastrar:
+
+- **Confirmada** — respondeu ao SNMP e informou o contador;
+- **Muito provável** — porta 9100 (impressão direta) aberta;
+- **Possível** — apenas IPP ou LPD.
+
+O que já está cadastrado aparece marcado, e o cadastro é feito apenas sobre os
+itens selecionados, com nome e setor editáveis.
 
 ## Uso
 
