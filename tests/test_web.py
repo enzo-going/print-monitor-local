@@ -129,7 +129,8 @@ def test_add_printer_invalid_ip_flashes_error(client_and_db):
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert "IP invalido" in resp.get_data(as_text=True)
+    # A mensagem precisa dizer o que corrigir, nao apenas que esta invalido.
+    assert "maior que 255" in resp.get_data(as_text=True)
     db = Database(db_path)
     assert db.list_printers() == []
     db.close()
@@ -617,3 +618,70 @@ def test_non_local_host_header_is_rejected_without_session(app_client):
     assert response.status_code == 400
     assert "_csrf_token" not in response.get_data(as_text=True)
     assert "Set-Cookie" not in response.headers
+
+
+# -- apoio ao preenchimento, descoberta guiada e ajuda ---------------------
+
+
+def test_ajuda_responde(app_client):
+    resp = app_client.get("/ajuda")
+    assert resp.status_code == 200
+    assert "duas leituras" in resp.get_data(as_text=True)
+
+
+def test_api_normaliza_ip(client_and_db):
+    client, _ = client_and_db
+    dados = client.post("/api/normalizar-ip", data={"ip": " 192,168,0,1O "}).get_json()
+    assert dados == {"ok": True, "ip": "192.168.0.10"}
+
+
+def test_api_normaliza_ip_explica_o_erro(client_and_db):
+    client, _ = client_and_db
+    dados = client.post("/api/normalizar-ip", data={"ip": "192.168.0"}).get_json()
+    assert dados["ok"] is False
+    assert "incompleto" in dados["erro"]
+
+
+def test_api_testar_recusa_ip_invalido(client_and_db):
+    client, _ = client_and_db
+    dados = client.post("/api/testar", data={"ip": "999.1.1.1"}).get_json()
+    assert dados["ok"] is False
+    assert "255" in dados["erro"]
+
+
+def test_add_printer_corrige_ip_digitado_errado(client_and_db):
+    """O endereco copiado de uma etiqueta chega torto; o cadastro endireita."""
+    client, db_path = client_and_db
+    client.post(
+        "/printers/add",
+        data={"name": "Torta", "ip": " 192,168,O,5O:9100 "},
+        follow_redirects=True,
+    )
+    db = Database(db_path)
+    assert db.get_printer_by_ip("192.168.0.50") is not None
+    db.close()
+
+
+def test_discover_register_cadastra_os_selecionados(client_and_db):
+    client, db_path = client_and_db
+    resp = client.post(
+        "/discover/register",
+        data={
+            "selecionado": ["10.0.0.7"],
+            "nome_10.0.0.7": "Ricoh Recepcao",
+            "local_10.0.0.7": "Recepcao",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db = Database(db_path)
+    printer = db.get_printer_by_ip("10.0.0.7")
+    assert printer is not None
+    assert (printer.name, printer.location) == ("Ricoh Recepcao", "Recepcao")
+    db.close()
+
+
+def test_discover_register_sem_selecao_avisa(client_and_db):
+    client, _ = client_and_db
+    resp = client.post("/discover/register", data={}, follow_redirects=True)
+    assert "Marque ao menos um" in resp.get_data(as_text=True)

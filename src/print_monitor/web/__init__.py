@@ -14,6 +14,7 @@ from flask import (
     Response,
     abort,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -24,9 +25,10 @@ from flask import (
 from ..collector import Collector, make_backend
 from ..config import load_config
 from ..db import Database
-from ..discovery import DEFAULT_PRINTER_PORTS, discover
+from ..discovery import DEFAULT_PRINTER_PORTS, discover, suggested_networks
 from ..exports import report_to_csv
 from ..imports import decode_bytes, import_printers_from_csv
+from ..netaddr import IPError, normalize_ip
 from ..printers import register_printer, update_printer
 from ..reports import monthly_report, system_timezone
 
@@ -634,21 +636,87 @@ def create_app(
 
     # -- descoberta ------------------------------------------------------
 
+    # -- apoio ao preenchimento (consultado pela propria pagina) ----------
+
+    @app.route("/api/normalizar-ip", methods=["POST"])
+    def api_normalize_ip() -> Response:
+        """Corrige o IP digitado, para o aviso ao vivo no formulario.
+
+        A pagina consulta a mesma funcao usada no cadastro em vez de repetir a
+        regra em JavaScript: assim o aviso nunca discorda do que sera salvo.
+        """
+        try:
+            return jsonify({"ok": True, "ip": normalize_ip(request.form.get("ip", ""))})
+        except IPError as exc:
+            return jsonify({"ok": False, "erro": str(exc)})
+
+    @app.route("/api/testar", methods=["POST"])
+    def api_test() -> Response:
+        """Consulta um IP na hora e devolve o que o equipamento respondeu.
+
+        Descobrir na hora do cadastro que o IP esta errado evita um mes inteiro
+        de coletas vazias percebido so no fechamento.
+        """
+        from ..snmp import SNMPError, identify
+
+        try:
+            ip = normalize_ip(request.form.get("ip", ""))
+        except IPError as exc:
+            return jsonify({"ok": False, "erro": str(exc)})
+
+        try:
+            ident = identify(
+                ip,
+                community=config.snmp_community,
+                port=config.snmp_port,
+                timeout=max(1.0, config.snmp_timeout),
+                version=config.snmp_version,
+            )
+        except SNMPError as exc:
+            return jsonify({"ok": False, "ip": ip, "erro": str(exc)})
+
+        return jsonify(
+            {
+                "ok": ident.responded,
+                "ip": ip,
+                "nome": ident.suggested_name if ident.responded else None,
+                "modelo": ident.model,
+                "serie": ident.serial,
+                "local": ident.location,
+                "contador": ident.counter,
+                "erro": None
+                if ident.responded
+                else (
+                    f"{ip} não respondeu ao SNMP. Verifique se o equipamento está "
+                    "ligado, se o SNMP está habilitado no painel dele e se o IP "
+                    "está correto."
+                ),
+            }
+        )
+
+    # -- descoberta ------------------------------------------------------
+
     @app.route("/discover", methods=["GET", "POST"])
     def discover_view() -> str:
+        db = open_db()
+        try:
+            known_ips = {printer.ip for printer in db.list_printers()}
+        finally:
+            db.close()
+        # A impressora quase sempre esta na mesma rede do computador; sugerir a
+        # faixa poupa o usuario de precisar saber o que e um CIDR.
+        suggestions = suggested_networks()
         results = None
         params = {
-            "network": "",
+            "network": suggestions[0] if suggestions else "",
             "ports": "9100,631,515",
-            "snmp": False,
-            "register": False,
+            "snmp": True,
             "max_hosts": 1024,
         }
         if request.method == "POST":
             params["network"] = (request.form.get("network") or "").strip()
             params["ports"] = (request.form.get("ports") or "9100,631,515").strip()
             params["snmp"] = bool(request.form.get("snmp"))
-            params["register"] = bool(request.form.get("register"))
             params["max_hosts"] = _parse_int(request.form.get("max_hosts"), 1024)
             try:
                 ports = (
@@ -661,28 +729,69 @@ def create_app(
                     max_hosts=params["max_hosts"],
                     snmp_confirm=params["snmp"],
                     config=config,
+                    known_ips=known_ips,
                 )
             except ValueError as exc:
                 flash(str(exc), "erro")
                 results = None
             else:
-                if params["register"] and results:
-                    db = open_db()
-                    added = 0
-                    try:
-                        for discovered in results:
-                            if db.get_printer_by_ip(discovered.ip) is None:
-                                register_printer(
-                                    db,
-                                    name=f"Impressora {discovered.ip}",
-                                    ip=discovered.ip,
-                                )
-                                added += 1
-                    finally:
-                        db.close()
-                    flash(f"{added} impressora(s) cadastrada(s).", "ok")
-                elif not results:
+                novos = [item for item in results if not item.already_registered]
+                if not results:
                     flash("Nenhum host com portas de impressão encontrado.", "ok")
-        return render_template("discover.html", results=results, params=params)
+                elif not novos:
+                    flash(
+                        f"{len(results)} equipamento(s) encontrado(s) — todos já "
+                        "estão cadastrados.",
+                        "ok",
+                    )
+                else:
+                    flash(
+                        f"{len(novos)} equipamento(s) novo(s). Marque os que quiser "
+                        "cadastrar e confirme abaixo.",
+                        "ok",
+                    )
+        return render_template(
+            "discover.html", results=results, params=params, suggestions=suggestions
+        )
+
+    @app.route("/discover/register", methods=["POST"])
+    def discover_register() -> Response:
+        """Cadastra apenas os equipamentos marcados na lista de resultados.
+
+        Cadastrar tudo em bloco enchia a lista de aparelhos que apenas abrem as
+        mesmas portas — porteiros eletronicos, servidores de impressao antigos.
+        """
+        selecionados = request.form.getlist("selecionado")
+        if not selecionados:
+            flash("Marque ao menos um equipamento para cadastrar.", "erro")
+            return redirect(url_for("discover_view"))
+
+        db = open_db()
+        adicionadas, erros = 0, []
+        try:
+            for ip in selecionados:
+                try:
+                    register_printer(
+                        db,
+                        name=(request.form.get(f"nome_{ip}") or "").strip(),
+                        ip=ip,
+                        location=(request.form.get(f"local_{ip}") or "").strip() or None,
+                        model=(request.form.get(f"modelo_{ip}") or "").strip() or None,
+                        serial=(request.form.get(f"serie_{ip}") or "").strip() or None,
+                    )
+                    adicionadas += 1
+                except ValueError as exc:
+                    erros.append(str(exc))
+        finally:
+            db.close()
+        if adicionadas:
+            flash(f"{adicionadas} impressora(s) cadastrada(s).", "ok")
+        for erro in erros[:5]:
+            flash(erro, "erro")
+        return redirect(url_for("printers_view"))
+
+    @app.route("/ajuda")
+    def help_view() -> str:
+        return render_template("help.html")
 
     return app

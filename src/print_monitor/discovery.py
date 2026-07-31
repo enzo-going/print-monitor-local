@@ -22,9 +22,19 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from .config import Config
+from .netaddr import local_networks, normalize_network
 
 # Portas TCP tipicas de impressao.
 DEFAULT_PRINTER_PORTS = (9100, 631, 515)
+
+PORT_LABELS = {
+    9100: "Impressão direta (RAW/JetDirect)",
+    631: "IPP",
+    515: "LPD",
+    161: "SNMP",
+    80: "Painel web",
+    443: "Painel web (seguro)",
+}
 
 
 @dataclass
@@ -34,6 +44,41 @@ class DiscoveredHost:
     ip: str
     open_ports: list[int] = field(default_factory=list)
     snmp_counter: int | None = None
+    name: str | None = None
+    model: str | None = None
+    serial: str | None = None
+    location: str | None = None
+    already_registered: bool = False
+
+    @property
+    def suggested_name(self) -> str:
+        """Nome a propor no cadastro, preferindo o que o equipamento informou."""
+        for candidate in (self.name, self.model):
+            if candidate and candidate.strip():
+                return candidate.strip()[:60]
+        return f"Impressora {self.ip}"
+
+    @property
+    def ports_label(self) -> str:
+        return ", ".join(PORT_LABELS.get(p, str(p)) for p in self.open_ports)
+
+    @property
+    def confidence(self) -> str:
+        """Quao provavel e que o host seja mesmo uma impressora.
+
+        Outros dispositivos tambem abrem 631/515; sem esse rotulo o usuario nao
+        tem como julgar o que vale a pena cadastrar.
+        """
+        if self.snmp_counter is not None:
+            return "Confirmada"
+        if 9100 in self.open_ports:
+            return "Muito provável"
+        return "Possível"
+
+
+def suggested_networks() -> list[str]:
+    """Faixas sugeridas para a tela de descoberta (as da propria maquina)."""
+    return local_networks()
 
 
 def host_count(cidr: str) -> int:
@@ -59,25 +104,24 @@ def tcp_port_open(host: str, port: int, timeout: float = 0.3) -> bool:
         return False
 
 
-def _try_snmp_counter(ip: str, config: Config | None) -> int | None:
-    from .snmp import OID_PRT_MARKER_LIFE_COUNT, SNMPError, snmp_get
+def _identify(ip: str, config: Config | None) -> dict:
+    """Le contador e identificacao do equipamento; devolve o que conseguir."""
+    from .snmp import identify
 
     community = config.snmp_community if config else "public"
     port = config.snmp_port if config else 161
-    timeout = config.snmp_timeout if config else 2
     version = config.snmp_version if config else "2c"
-    try:
-        return snmp_get(
-            ip,
-            OID_PRT_MARKER_LIFE_COUNT,
-            community=community,
-            port=port,
-            timeout=timeout,
-            retries=0,
-            version=version,
-        )
-    except SNMPError:
-        return None
+    # Na varredura o tempo importa mais do que a insistencia: sao dezenas de
+    # hosts, e o equipamento certo responde rapido.
+    timeout = min(config.snmp_timeout, 1.5) if config else 1.0
+    ident = identify(ip, community=community, port=port, timeout=timeout, version=version)
+    return {
+        "snmp_counter": ident.counter,
+        "name": ident.name,
+        "model": ident.model,
+        "serial": ident.serial,
+        "location": ident.location,
+    }
 
 
 def discover(
@@ -88,14 +132,21 @@ def discover(
     max_hosts: int = 1024,
     snmp_confirm: bool = False,
     config: Config | None = None,
+    known_ips: set[str] | None = None,
 ) -> list[DiscoveredHost]:
-    """Descobre hosts com portas de impressao abertas em uma faixa CIDR.
+    """Descobre hosts com portas de impressao abertas em uma faixa.
+
+    ``cidr`` aceita CIDR ou os formatos livres de ``normalize_network``
+    (``192.168.0``, ``192.168.0.*``, ``192.168.0.1-254``).
 
     Levanta ``ValueError`` se a faixa exceder ``max_hosts`` (protecao contra
     varredura ampla demais). A ordem do resultado e crescente por endereco.
     """
     if not cidr.strip():
         raise ValueError("Informe uma faixa de rede em formato CIDR.")
+    # Exigir CIDR de quem nunca ouviu falar em CIDR era o maior obstaculo desta
+    # tela; aqui a faixa escrita de forma livre vira o CIDR correspondente.
+    cidr = normalize_network(cidr)
     if not 1 <= max_hosts <= 65_536:
         raise ValueError("max_hosts deve estar entre 1 e 65536.")
     if not 1 <= workers <= 128:
@@ -115,13 +166,17 @@ def discover(
         )
 
     hosts = list(iter_hosts(cidr))
+    known = known_ips or set()
 
     def probe(ip: str) -> DiscoveredHost | None:
         open_ports = [p for p in ports if tcp_port_open(ip, p, timeout)]
         if not open_ports:
             return None
-        counter = _try_snmp_counter(ip, config) if snmp_confirm else None
-        return DiscoveredHost(ip=ip, open_ports=open_ports, snmp_counter=counter)
+        host = DiscoveredHost(ip=ip, open_ports=open_ports, already_registered=ip in known)
+        if snmp_confirm:
+            for campo, valor in _identify(ip, config).items():
+                setattr(host, campo, valor)
+        return host
 
     results: list[DiscoveredHost] = []
     if hosts:

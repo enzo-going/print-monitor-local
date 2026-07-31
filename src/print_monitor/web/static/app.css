@@ -878,3 +878,73 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Apoio ao preenchimento do IP e edicao de cadastro ------------------- */
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin: 0.35rem 0 0;
+  min-height: 1rem;
+}
+
+.field-hint.is-ok,
+.section-note.is-ok {
+  color: var(--success);
+}
+
+.field-hint.is-error,
+.section-note.is-error {
+  color: var(--danger);
+}
+
+.muted-line {
+  color: var(--muted);
+  display: block;
+  font-size: 0.72rem;
+}
+
+/* Rotulo lido por leitores de tela em colunas sem cabecalho visivel. */
+.sr-only {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.help-steps {
+  color: var(--muted-strong);
+  font-size: 0.86rem;
+  line-height: 1.65;
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.help-steps li + li {
+  margin-top: 0.6rem;
+}
+
+.help-item {
+  border-top: 1px solid var(--border-soft);
+  padding: 0.7rem 0 0.2rem;
+}
+
+.help-item summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.help-item p,
+.help-item li {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.help-item ol {
+  padding-left: 1.15rem;
+}
