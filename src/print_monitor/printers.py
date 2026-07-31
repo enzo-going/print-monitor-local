@@ -2,16 +2,22 @@
 
 Camada de servico sobre ``db.py``: valida a entrada (IP) e normaliza os dados
 antes de persistir.
+
+A validacao do IP e deliberadamente **tolerante** (ver ``netaddr.py``): quem
+cadastra costuma copiar o endereco de uma etiqueta ou de um e-mail, e os erros
+que aparecem sao previsiveis — espaco sobrando, virgula no lugar do ponto, a
+letra ``O`` no lugar do zero. Recusar tudo isso com "IP invalido" transfere ao
+usuario um trabalho que o programa consegue fazer sozinho.
 """
 
 from __future__ import annotations
 
-import ipaddress
 import sqlite3
 from dataclasses import dataclass
 
 from .db import Database
 from .models import Printer
+from .netaddr import normalize_ip
 
 MAX_NAME_LENGTH = 120
 MAX_LOCATION_LENGTH = 120
@@ -29,17 +35,12 @@ class _PrinterFields:
 
 
 def validate_ip(ip: str) -> str:
-    """Valida e normaliza um endereco IP (v4 ou v6).
+    """Valida e normaliza um IP, corrigindo os erros comuns de digitacao.
 
-    Levanta ``ValueError`` se o IP for invalido.
+    Levanta ``ValueError`` (``IPError``) com uma mensagem que diz o que corrigir
+    quando o endereco nao pode ser interpretado.
     """
-    ip = (ip or "").strip()
-    if not ip:
-        raise ValueError("IP nao pode ser vazio.")
-    try:
-        return str(ipaddress.ip_address(ip))
-    except ValueError as exc:
-        raise ValueError(f"IP invalido: {ip!r}") from exc
+    return normalize_ip(ip)
 
 
 def _clean_text(value: str | None, label: str, max_length: int, *, required: bool) -> str | None:

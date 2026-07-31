@@ -17,13 +17,25 @@
       <h2>Configurar busca</h2>
     </div>
   </div>
-  <form method="post" action="/discover">
+  <form method="post" action="/discover" data-loading="Procurando… leva alguns segundos">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="grid">
       <div>
-        <label for="network">Faixa (CIDR) *</label>
-        <input type="text" id="network" name="network" required
-               value="{{ params.network }}" placeholder="192.168.0.0/24">
+        <label for="network">Faixa de rede *</label>
+        <input type="text" id="network" name="network" required list="faixas-sugeridas"
+               value="{{ params.network }}" placeholder="192.168.0.0/24"
+               autocomplete="off" spellcheck="false">
+        <datalist id="faixas-sugeridas">
+          {% for rede in suggestions %}<option value="{{ rede }}"></option>{% endfor %}
+        </datalist>
+        <p class="field-hint">
+          {% if suggestions %}
+            Este computador está em <strong>{{ suggestions[0] }}</strong> —
+            normalmente a rede das impressoras é a mesma.
+          {% else %}
+            Pode escrever só <code>192.168.0</code> ou <code>192.168.0.1-254</code>.
+          {% endif %}
+        </p>
       </div>
       <div>
         <label for="ports">Portas (CSV)</label>
@@ -36,17 +48,16 @@
     </div>
     <div class="check-actions">
       <label class="check-row">
-        <input type="checkbox" name="snmp" {% if params.snmp %}checked{% endif %}> Confirmar via SNMP (lê contador)
-      </label>
-      <label class="check-row">
-        <input type="checkbox" name="register" {% if params.register %}checked{% endif %}> Cadastrar encontrados
+        <input type="checkbox" name="snmp" {% if params.snmp %}checked{% endif %}>
+        Ler nome, modelo e contador de cada equipamento (recomendado)
       </label>
       <button type="submit">Procurar</button>
     </div>
   </form>
   <p class="panel-intro">
-    Abordagem segura: faixa explícita, limite de hosts, timeouts curtos. Use
-    apenas em redes autorizadas.
+    Abordagem segura: faixa explícita, limite de hosts, timeouts curtos e apenas
+    consultas de leitura. Nada é alterado nos equipamentos. Use somente em redes
+    que você administra.
   </p>
 </section>
 
@@ -57,22 +68,83 @@
       <span class="eyebrow">Descoberta</span>
       <h2>Resultados</h2>
     </div>
+    {% if results %}
+    <span class="section-note">Marque o que quiser cadastrar; os nomes podem ser ajustados.</span>
+    {% endif %}
   </div>
   {% if results %}
-  <table>
-    <thead>
-      <tr><th>IP</th><th>Portas abertas</th><th class="num">Contador SNMP</th></tr>
-    </thead>
-    <tbody>
-      {% for d in results %}
-      <tr>
-        <td>{{ d.ip }}</td>
-        <td>{{ d.open_ports | join(", ") }}</td>
-        <td class="num">{{ d.snmp_counter if d.snmp_counter is not none else "-" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <form method="post" action="/discover/register">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><span class="sr-only">Cadastrar</span></th>
+            <th>Endereço</th>
+            <th>Nome sugerido</th>
+            <th>Local</th>
+            <th class="num">Contador</th>
+            <th>Confiança</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in results %}
+          <tr>
+            <td>
+              {% if d.already_registered %}
+                <span class="badge badge-neutral" title="Já cadastrada">Já consta</span>
+              {% else %}
+                <input type="checkbox" name="selecionado" value="{{ d.ip }}"
+                       aria-label="Cadastrar {{ d.ip }}" checked>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ d.ip }}</strong>
+              <small class="muted-line">{{ d.ports_label }}</small>
+            </td>
+            <td>
+              {% if d.already_registered %}
+                <span class="muted-line">já cadastrada</span>
+              {% else %}
+                <input type="text" name="nome_{{ d.ip }}" value="{{ d.suggested_name }}"
+                       aria-label="Nome para {{ d.ip }}">
+                <input type="hidden" name="modelo_{{ d.ip }}" value="{{ d.model or '' }}">
+                <input type="hidden" name="serie_{{ d.ip }}" value="{{ d.serial or '' }}">
+              {% endif %}
+            </td>
+            <td>
+              {% if not d.already_registered %}
+                <input type="text" name="local_{{ d.ip }}" value="{{ d.location or '' }}"
+                       placeholder="opcional" aria-label="Local para {{ d.ip }}">
+              {% endif %}
+            </td>
+            <td class="num">
+              {{ d.snmp_counter | number_pt if d.snmp_counter is not none else "—" }}
+            </td>
+            <td>
+              {% if d.confidence == "Confirmada" %}
+                <span class="badge badge-success">Confirmada</span>
+              {% elif d.confidence == "Muito provável" %}
+                <span class="badge badge-warning">Muito provável</span>
+              {% else %}
+                <span class="badge badge-neutral">Possível</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if results | rejectattr("already_registered") | list %}
+    <div class="check-actions">
+      <button type="submit">Cadastrar selecionadas</button>
+      <span class="section-note">
+        “Confirmada” significa que o equipamento respondeu ao SNMP e informou o
+        contador — essas funcionarão com certeza.
+      </span>
+    </div>
+    {% endif %}
+  </form>
   {% else %}
   <p class="empty">Nenhum host com portas de impressão encontrado na faixa.</p>
   {% endif %}

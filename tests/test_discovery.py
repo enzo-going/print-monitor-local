@@ -8,12 +8,14 @@ import pytest
 
 from print_monitor.config import Config
 from print_monitor.discovery import (
-    _try_snmp_counter,
+    DiscoveredHost,
+    _identify,
     discover,
     host_count,
     iter_hosts,
     tcp_port_open,
 )
+from print_monitor.snmp import SNMPError
 
 
 def test_host_count():
@@ -78,7 +80,13 @@ def test_discovery_passes_configured_snmp_version(monkeypatch):
         received.update(host=host, oid=oid, **kwargs)
         return 42
 
+    # A descoberta le contador e identificacao; o OID textual nao responde aqui,
+    # e o silencio dele nao pode impedir a leitura do contador.
+    def fake_snmp_get_value(host, oid, **kwargs):
+        raise SNMPError("sem texto")
+
     monkeypatch.setattr("print_monitor.snmp.snmp_get", fake_snmp_get)
+    monkeypatch.setattr("print_monitor.snmp.snmp_get_value", fake_snmp_get_value)
     config = Config(
         db_path="data/test.db",
         backend="snmp",
@@ -89,7 +97,7 @@ def test_discovery_passes_configured_snmp_version(monkeypatch):
         snmp_version="1",
     )
 
-    assert _try_snmp_counter("192.0.2.20", config) == 42
+    assert _identify("192.0.2.20", config)["snmp_counter"] == 42
     assert received["version"] == "1"
 
 
@@ -112,3 +120,34 @@ def test_discover_rejects_large_range():
 def test_discover_rejects_invalid_limits(kwargs):
     with pytest.raises(ValueError):
         discover("127.0.0.1/32", **kwargs)
+
+
+# -- identificacao e faixa em formato livre --------------------------------
+
+
+def test_discover_marca_os_ja_cadastrados():
+    srv, port = _listening_tcp_port()
+    try:
+        found = discover("127.0.0.1/32", ports=(port,), timeout=1.0, known_ips={"127.0.0.1"})
+    finally:
+        srv.close()
+    assert found[0].already_registered is True
+
+
+def test_discover_aceita_faixa_em_formato_livre():
+    """Quem opera escreve '192.168.0', nao '192.168.0.0/24'."""
+    with pytest.raises(ValueError, match="Faixa muito grande"):
+        discover("192.168.0", max_hosts=10)
+
+
+def test_nome_sugerido_prefere_o_nome_do_equipamento():
+    host = DiscoveredHost(ip="10.0.0.1", open_ports=[9100], name="RICOH-RECEPCAO")
+    assert host.suggested_name == "RICOH-RECEPCAO"
+    assert DiscoveredHost(ip="10.0.0.2").suggested_name == "Impressora 10.0.0.2"
+
+
+def test_confianca_reflete_o_que_foi_confirmado():
+    confirmada = DiscoveredHost(ip="1.1.1.1", open_ports=[9100], snmp_counter=10)
+    assert confirmada.confidence == "Confirmada"
+    assert DiscoveredHost(ip="1.1.1.1", open_ports=[9100]).confidence == "Muito provável"
+    assert DiscoveredHost(ip="1.1.1.1", open_ports=[631]).confidence == "Possível"

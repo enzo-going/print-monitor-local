@@ -103,8 +103,17 @@ def cmd_collect(args: argparse.Namespace) -> int:
             print(f"Impressora {r.printer_id}: contador={r.total_counter}")
         for printer, error in outcome.failures:
             print(f"Falha na impressora {printer.id} [{printer.ip}]: {error}", file=sys.stderr)
+        if outcome.readings and outcome.failures:
+            print(
+                f"{len(outcome.readings)} lida(s) com sucesso, "
+                f"{len(outcome.failures)} sem resposta."
+            )
         db.close()
-        return 1 if outcome.failures else 0
+        # Codigo de erro somente quando NENHUMA impressora respondeu. Em um
+        # parque real sempre ha alguma desligada; marcar a tarefa agendada do
+        # Windows como falha todo dia ensina o usuario a ignora-la, justamente
+        # o alarme que deveria avisar quando a coleta parar de vez.
+        return 0 if (outcome.readings or not outcome.failures) else 1
 
     if args.printer_id is None:
         print("Informe --printer-id ou use --all.", file=sys.stderr)
@@ -202,6 +211,54 @@ def cmd_import_printers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_test(args: argparse.Namespace) -> int:
+    """Consulta um IP e mostra o que o equipamento respondeu.
+
+    Serve para separar "impressora desligada" de "IP errado" e de "SNMP
+    desabilitado" sem precisar cadastrar nada antes.
+    """
+    from .netaddr import IPError, normalize_ip
+    from .snmp import SNMPError, identify
+
+    config = load_config()
+    try:
+        ip = normalize_ip(args.ip)
+    except IPError as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        return 1
+    if ip != args.ip.strip():
+        print(f"IP interpretado como: {ip}")
+
+    try:
+        ident = identify(
+            ip,
+            community=config.snmp_community,
+            port=config.snmp_port,
+            timeout=max(1.0, config.snmp_timeout),
+            version=config.snmp_version,
+        )
+    except SNMPError as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        return 1
+
+    if not ident.responded:
+        print(
+            f"Erro: {ip} nao respondeu ao SNMP. Verifique se o equipamento esta "
+            "ligado, se o SNMP esta habilitado nele e se a comunidade de leitura "
+            "confere.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"Endereco:  {ip}")
+    print(f"Nome:      {ident.name or '-'}")
+    print(f"Modelo:    {ident.model or '-'}")
+    print(f"Serie:     {ident.serial or '-'}")
+    print(f"Local:     {ident.location or '-'}")
+    print(f"Contador:  {ident.counter if ident.counter is not None else '- (nao publicado)'}")
+    return 0
+
+
 def cmd_discover(args: argparse.Namespace) -> int:
     config = load_config()
     try:
@@ -230,18 +287,26 @@ def cmd_discover(args: argparse.Namespace) -> int:
         print("Nenhum host com portas de impressao encontrado.")
         return 0
 
-    print(f"{'IP':<18} {'PORTAS':<16} {'CONTADOR SNMP'}")
+    print(f"{'IP':<18} {'CONTADOR':>10}  {'CONFIANCA':<15} NOME")
     for d in found:
-        ports_str = ",".join(str(p) for p in d.open_ports)
-        counter = d.snmp_counter if d.snmp_counter is not None else "-"
-        print(f"{d.ip:<18} {ports_str:<16} {counter}")
+        counter = str(d.snmp_counter) if d.snmp_counter is not None else "-"
+        print(f"{d.ip:<18} {counter:>10}  {d.confidence:<15} {d.suggested_name}")
 
     if args.register:
         db = _open_db()
         added = 0
         for d in found:
             if db.get_printer_by_ip(d.ip) is None:
-                register_printer(db, name=f"Impressora {d.ip}", ip=d.ip)
+                # Nome, modelo e serie vem do proprio equipamento quando ele os
+                # publica; sem isso a lista virava dezenas de "Impressora <IP>".
+                register_printer(
+                    db,
+                    name=d.suggested_name,
+                    ip=d.ip,
+                    location=d.location,
+                    model=d.model,
+                    serial=d.serial,
+                )
                 added += 1
         db.close()
         print(f"{added} impressora(s) cadastrada(s).")
@@ -324,8 +389,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_imp.add_argument("--file", required=True, help="Caminho do CSV.")
     p_imp.set_defaults(func=cmd_import_printers)
 
+    p_test = sub.add_parser("test", help="Testa um IP e mostra o que ele responde.")
+    p_test.add_argument("ip", help="Endereco IP a testar.")
+    p_test.set_defaults(func=cmd_test)
+
     p_disc = sub.add_parser("discover", help="Descobre impressoras na rede (abordagem segura).")
-    p_disc.add_argument("--network", required=True, help="Faixa CIDR (ex.: 192.168.0.0/24).")
+    p_disc.add_argument(
+        "--network",
+        required=True,
+        help="Faixa (ex.: 192.168.0.0/24, 192.168.0 ou 192.168.0.1-254).",
+    )
     p_disc.add_argument("--ports", default="9100,631,515", help="Portas TCP a verificar (CSV).")
     p_disc.add_argument("--timeout", type=float, default=0.3, help="Timeout por porta (s).")
     p_disc.add_argument("--workers", type=int, default=32, help="Conexoes simultaneas.")
