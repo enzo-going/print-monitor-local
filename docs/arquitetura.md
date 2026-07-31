@@ -23,9 +23,10 @@ impressão por período a partir das diferenças entre leituras.
 | `config.py`    | Resolve parâmetros do ambiente (`.env` opcional) e padrões.   |
 | `models.py`    | `Printer` e `Reading` (dataclasses imutáveis).               |
 | `db.py`        | Esquema e operações SQLite; (de)serialização de datas (UTC). |
-| `printers.py`  | Validação de IP e cadastro sem duplicidade.                  |
+| `netaddr.py`   | Normalização tolerante de IPs/faixas; detecção da rede local.|
+| `printers.py`  | Cadastro, edição e validação sem duplicidade.                |
 | `collector.py` | Interface de backend, `MockBackend` e orquestração da coleta.|
-| `snmp.py`      | Backend SNMP real e OIDs de contador total.                 |
+| `snmp.py`      | Cliente SNMP puro, OIDs de contador e identificação.         |
 | `discovery.py` | Descoberta segura de impressoras na rede.                   |
 | `reports.py`   | Cálculo de volume por período/mês, filtros e ranking.        |
 | `exports.py`   | Serialização de relatórios para CSV.                        |
