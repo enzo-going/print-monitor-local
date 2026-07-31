@@ -19,34 +19,48 @@
         <h2>Adicionar por IP</h2>
       </div>
     </div>
-    <form class="stack-form" method="post" action="/printers/add">
+    <form class="stack-form" method="post" action="/printers/add"
+          data-ip-check data-csrf="{{ csrf_token() }}">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <div class="grid">
         <div>
-          <label for="name">Nome *</label>
-          <input type="text" id="name" name="name" maxlength="120" required
-                 placeholder="Impressora do setor">
-        </div>
-        <div>
           <label for="ip">IP *</label>
           <input type="text" id="ip" name="ip" maxlength="45" required
-                 placeholder="Ex.: 192.168.1.50">
+                 placeholder="Ex.: 192.168.1.50" data-ip-field
+                 autocomplete="off" spellcheck="false">
+          <p class="field-hint" data-ip-feedback role="status" aria-live="polite"></p>
+        </div>
+        <div>
+          <label for="name">Nome *</label>
+          <input type="text" id="name" name="name" maxlength="120" required
+                 placeholder="Impressora do setor" data-fill="nome">
         </div>
         <div>
           <label for="location">Local ou setor</label>
           <input type="text" id="location" name="location" maxlength="120"
-                 placeholder="Ex.: Administrativo">
+                 placeholder="Ex.: Administrativo" data-fill="local">
         </div>
         <div>
           <label for="model">Modelo</label>
-          <input type="text" id="model" name="model" maxlength="160" placeholder="Opcional">
+          <input type="text" id="model" name="model" maxlength="160" placeholder="Opcional"
+                 data-fill="modelo">
         </div>
         <div>
           <label for="serial">Número de série</label>
-          <input type="text" id="serial" name="serial" maxlength="120" placeholder="Opcional">
+          <input type="text" id="serial" name="serial" maxlength="120" placeholder="Opcional"
+                 data-fill="serie">
         </div>
       </div>
-      <button type="submit">Cadastrar impressora</button>
+      <div class="check-actions">
+        <button type="submit">Cadastrar impressora</button>
+        <button type="button" class="btn btn-outline" data-ip-test>Testar conexão</button>
+        <span class="section-note" data-test-status role="status" aria-live="polite"></span>
+      </div>
+      <p class="panel-intro">
+        Pode colar o IP como estiver: espaços, vírgulas no lugar dos pontos,
+        <code>http://</code> na frente ou <code>:9100</code> no fim são corrigidos
+        automaticamente.
+      </p>
     </form>
   </section>
 

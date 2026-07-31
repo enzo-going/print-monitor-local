@@ -3,6 +3,61 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.3.0] — 2026-07-31
+
+Foco no atrito de quem cadastra e diagnostica as impressoras, e em fazer a
+leitura do contador funcionar em mais modelos.
+
+### Adicionado
+
+- Correção automática do endereço IP digitado: espaços e caracteres invisíveis
+  colados de PDF ou Word, vírgula no lugar do ponto, a letra `O`/`l` no lugar de
+  `0`/`1`, `http://` na frente, `:9100` no fim e zeros à esquerda. O que não dá
+  para interpretar vira uma mensagem dizendo o que corrigir — “falta 1 número”,
+  “o número 300 é maior que 255” — no lugar de um “IP inválido” seco.
+- Aviso ao vivo no formulário mostrando como o endereço será salvo. A página
+  consulta a mesma função usada no cadastro, para o aviso nunca discordar do que
+  é gravado.
+- Botão **Testar conexão**: consulta o IP na hora, informa se o equipamento
+  responde e preenche nome, modelo, série e local com o que ele publica.
+- Leitura do contador em OIDs proprietários de HP, Ricoh, Kyocera, Brother,
+  Lexmark, Xerox, Samsung e Epson, tentados quando o `prtMarkerLifeCount` padrão
+  responde que não é suportado. Modelos de entrada que não implementam a
+  Printer-MIB completa deixam de ficar permanentemente sem contador.
+- Identificação do equipamento por SNMP (`sysName`, `sysDescr`, `sysLocation`,
+  modelo e número de série).
+- Faixa de rede da própria máquina detectada e sugerida na tela de descoberta,
+  que passa a aceitar formatos livres (`192.168.0`, `192.168.0.*`,
+  `192.168.0.1-254`) além do CIDR.
+- Resultados da descoberta com nome sugerido pelo próprio equipamento, marcação
+  do que já está cadastrado, nível de confiança (confirmada / muito provável /
+  possível) e seleção do que cadastrar — em vez de cadastrar tudo em bloco.
+- Comando `test <ip>` na CLI, para separar “impressora desligada” de “IP errado”
+  e de “SNMP desabilitado” sem precisar cadastrar nada antes.
+- Página **Ajuda**, explicando em linguagem comum por que são necessárias duas
+  leituras e o que verificar quando algo não funciona.
+
+### Alterado
+
+- `discover --register` cadastra com o nome, modelo e série informados pelo
+  equipamento, em vez de “Impressora `<IP>`”.
+- Os palpites de OID de fabricante usam tempo limite mais curto e sem tentativas
+  extras: um agente real ignora em silêncio o OID que não conhece, e cada
+  palpite custaria a espera inteira.
+
+### Corrigido
+
+- `collect --all` só retorna código de erro quando **nenhuma** impressora
+  responde. Em um parque real sempre há alguma desligada, e o comportamento
+  anterior marcaria a tarefa diária do Agendador do Windows como falha quase
+  todo dia — um alarme que dispara sempre ensina a ser ignorado, justamente o
+  alarme que deveria avisar quando a coleta parar de vez.
+- A coleta agendada deixa de ser inacessível para quem roda a partir do código:
+  `agendar-coleta.ps1` exigia `dist\print-monitor.exe` e falhava sem ele, embora
+  a coleta periódica seja justamente o que faz os relatórios existirem. Agora
+  localiza o Python do `.venv` ou do sistema, usa `pythonw` para não abrir uma
+  janela de console todo dia e ganhou a opção `-Remover`.
+
 ## [1.2.0] — 2026-07-30
 
 ### Adicionado

@@ -27,8 +27,11 @@
       <a href="/printers" {% if request.endpoint and request.endpoint.startswith("printers") %}class="active" aria-current="page"{% endif %}>
         Impressoras
       </a>
-      <a href="/discover" {% if request.endpoint == "discover_view" %}class="active" aria-current="page"{% endif %}>
+      <a href="/discover" {% if request.endpoint in ("discover_view", "discover_register") %}class="active" aria-current="page"{% endif %}>
         Descobrir
+      </a>
+      <a href="/ajuda" {% if request.endpoint == "help_view" %}class="active" aria-current="page"{% endif %}>
+        Ajuda
       </a>
     </nav>
   </header>

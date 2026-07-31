@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Ajuda — print-monitor-local{% endblock %}
+{% block content %}
+
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">Como funciona</span>
+    <h1>Ajuda</h1>
+    <p>Em uma página, sem termos técnicos.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Conceito</span>
+      <h2>Por que existem duas leituras</h2>
+    </div>
+  </div>
+  <p class="panel-intro">
+    Toda impressora de rede guarda um número: <strong>quantas páginas ela já
+    imprimiu desde que saiu de fábrica</strong>. Esse número só cresce e nunca é
+    reiniciado — então ele não diz, sozinho, quanto foi impresso em junho.
+  </p>
+  <p class="panel-intro">
+    O programa anota esse número de tempos em tempos. O volume de um período é a
+    diferença entre duas anotações. Contador em <strong>120.000</strong> no dia
+    1º e <strong>124.500</strong> no dia 30 significa
+    <strong>4.500 páginas</strong> no mês.
+  </p>
+  <p class="panel-intro">
+    Por isso o painel não mostra um total antes de existirem <strong>duas</strong>
+    leituras: com uma só, não há o que subtrair. Nesse caso ele diz que está
+    aguardando a linha de base, em vez de exibir um zero que pareceria real.
+  </p>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Roteiro</span>
+      <h2>Os três passos</h2>
+    </div>
+  </div>
+  <ol class="help-steps">
+    <li>
+      <strong>Cadastre as impressoras.</strong> Em
+      <a href="/discover">Descobrir</a> o programa acha os equipamentos sozinho e
+      já sugere nome e modelo. Se preferir, cadastre pelo IP em
+      <a href="/printers">Impressoras</a> ou importe sua planilha de controle.
+    </li>
+    <li>
+      <strong>Programe a coleta diária.</strong> No PowerShell, dentro da pasta
+      do programa: <code>.\scripts\agendar-coleta.ps1</code>. É isso que faz o
+      histórico existir.
+    </li>
+    <li>
+      <strong>Consulte o painel</strong> quando precisar e baixe a planilha do
+      mês para anexar ao relatório.
+    </li>
+  </ol>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Diagnóstico</span>
+      <h2>Quando algo não funciona</h2>
+    </div>
+  </div>
+
+  <details class="help-item">
+    <summary>A impressora não responde</summary>
+    <ol>
+      <li>O equipamento está ligado e conectado à rede?</li>
+      <li>O IP cadastrado é o atual? Impressoras com IP automático (DHCP) trocam
+          de endereço sozinhas — peça um IP fixo à rede.</li>
+      <li>O <strong>SNMP</strong> está habilitado no painel de configuração da
+          impressora? Em muitos modelos ele vem desligado de fábrica.</li>
+      <li>A comunidade de leitura confere com a configurada no equipamento
+          (normalmente <code>public</code>)?</li>
+    </ol>
+    <p>
+      O botão <strong>Testar conexão</strong>, na tela de impressoras, responde
+      na hora se o equipamento está acessível.
+    </p>
+  </details>
+
+  <details class="help-item">
+    <summary>Respondeu, mas não informou o contador</summary>
+    <p>
+      Alguns modelos de entrada não publicam o contador pelo padrão da indústria.
+      O programa tenta os endereços conhecidos de HP, Ricoh, Kyocera, Brother,
+      Lexmark, Xerox, Samsung e Epson antes de desistir. Quando nenhum funciona,
+      resta ler o contador pelo painel do próprio equipamento e informá-lo em
+      <a href="/readings">Histórico</a>.
+    </p>
+  </details>
+
+  <details class="help-item">
+    <summary>O contador diminuiu de um mês para o outro</summary>
+    <p>
+      Acontece quando o equipamento é trocado ou tem a placa substituída. O mês
+      fica marcado como reset e não entra no total até você revisar a leitura em
+      <a href="/readings">Histórico</a>, onde ela pode ser ignorada — e
+      restaurada depois, se for o caso.
+    </p>
+  </details>
+
+  <details class="help-item">
+    <summary>Digitei o IP errado</summary>
+    <p>
+      O campo corrige sozinho o que dá para corrigir: espaços sobrando, vírgula
+      no lugar do ponto, a letra “O” no lugar do zero, <code>http://</code> na
+      frente, <code>:9100</code> no fim e zeros à esquerda. O que sobrar de
+      errado vira uma mensagem explicando o que ajustar.
+    </p>
+    <p>
+      Para mudar o IP de uma impressora já cadastrada, use <em>Editar dados</em>
+      na lista — o histórico é preservado. Excluir e recadastrar apagaria todas
+      as leituras dela.
+    </p>
+  </details>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Privacidade</span>
+      <h2>O que o programa lê</h2>
+    </div>
+  </div>
+  <p class="panel-intro">
+    Tudo roda neste computador. São lidos apenas contadores e dados de
+    identificação dos equipamentos — nunca o conteúdo dos documentos, nem quem
+    imprimiu. Não há envio de informação para a internet, e o banco de dados é um
+    arquivo local.
+  </p>
+</section>
+
+{% endblock %}

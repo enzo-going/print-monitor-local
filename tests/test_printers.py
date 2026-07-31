@@ -94,3 +94,32 @@ def test_update_printer_converts_unique_race_to_value_error(db, monkeypatch):
 def test_printer_fields_have_reasonable_length_limits(db):
     with pytest.raises(ValueError, match="no maximo 120"):
         register_printer(db, name="X" * 121, ip="192.168.0.10")
+
+
+# -- tolerancia a erro de digitacao no IP ---------------------------------
+
+
+def test_register_printer_corrige_erros_de_digitacao(db):
+    """O endereco copiado de uma etiqueta chega torto; o programa endireita."""
+    printer = register_printer(db, name="HP 1", ip=" 192,168,O,5O:9100 ")
+    assert printer.ip == "192.168.0.50"
+
+
+def test_register_printer_corrige_zeros_a_esquerda(db):
+    assert register_printer(db, name="HP 2", ip="192.168.020.005").ip == "192.168.20.5"
+
+
+def test_validate_ip_explica_o_que_corrigir(db):
+    """A mensagem tem de dizer o que fazer, nao apenas que esta errado."""
+    with pytest.raises(ValueError, match="maior que 255"):
+        validate_ip("192.168.0.300")
+    with pytest.raises(ValueError, match="incompleto"):
+        validate_ip("192.168.0")
+    with pytest.raises(ValueError, match="Informe o endereço"):
+        validate_ip("")
+
+
+def test_update_printer_aceita_ip_torto(db):
+    printer = register_printer(db, name="Alfa", ip="10.0.0.1")
+    atualizada = update_printer(db, printer.id, name="Alfa", ip="10,0,0,9")
+    assert atualizada.ip == "10.0.0.9"

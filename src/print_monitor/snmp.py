@@ -30,6 +30,7 @@ from __future__ import annotations
 import random
 import socket
 import time
+from dataclasses import dataclass
 
 from .config import Config
 from .models import Printer
@@ -37,8 +38,34 @@ from .models import Printer
 # OID padrao Printer-MIB para contador total (prtMarkerLifeCount, marcador 1).
 OID_PRT_MARKER_LIFE_COUNT = "1.3.6.1.2.1.43.10.2.1.4.1.1"
 
-# OIDs candidatos para o total, tentados em ordem.
-COMMON_TOTAL_COUNTER_OIDS = (OID_PRT_MARKER_LIFE_COUNT,)
+# Identificacao (MIB-II e Printer-MIB), usada para nomear o equipamento.
+OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
+OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
+OID_SYS_LOCATION = "1.3.6.1.2.1.1.6.0"
+OID_PRT_SERIAL = "1.3.6.1.2.1.43.5.1.1.17.1"
+OID_HR_DEVICE_DESCR = "1.3.6.1.2.1.25.3.2.1.3.1"
+
+# Alternativas proprietarias, tentadas SOMENTE quando o OID padrao responde que
+# nao suporta. Varios equipamentos de entrada nao implementam a Printer-MIB
+# completa, mas expoem o total em um ramo do proprio fabricante — sem estas
+# tentativas eles ficavam permanentemente sem contador, mesmo acessiveis.
+VENDOR_TOTAL_COUNTER_OIDS: tuple[tuple[str, str], ...] = (
+    ("Printer-MIB (marcador 2)", "1.3.6.1.2.1.43.10.2.1.4.1.2"),
+    ("HP", "1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.2.5.0"),
+    ("Ricoh", "1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.1"),
+    ("Kyocera", "1.3.6.1.4.1.1347.42.2.1.1.1.6.1.1"),
+    ("Brother", "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.4.5.1.0"),
+    ("Samsung/HP", "1.3.6.1.4.1.236.11.5.1.1.1.1.0"),
+    ("Lexmark", "1.3.6.1.4.1.641.2.1.5.1.9.1"),
+    ("Xerox", "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.1"),
+    ("Epson", "1.3.6.1.4.1.1248.1.2.2.27.1.1.5.1.1"),
+)
+
+# OIDs candidatos para o total, tentados em ordem: padrao primeiro.
+COMMON_TOTAL_COUNTER_OIDS: tuple[str, ...] = (
+    OID_PRT_MARKER_LIFE_COUNT,
+    *(oid for _, oid in VENDOR_TOTAL_COUNTER_OIDS),
+)
 
 # Tags BER usadas.
 _TAG_INTEGER = 0x02
@@ -259,13 +286,20 @@ def parse_response(data: bytes) -> tuple[int, int, list[tuple[str, object]]]:
 def build_get_response(
     community: str,
     oid: str,
-    value: int,
+    value: int | bytes,
     request_id: int = 1,
     error_status: int = 0,
     value_tag: int = _TAG_COUNTER32,
 ) -> bytes:
-    """Monta uma resposta SNMP GET. Usado por testes e como referencia."""
-    value_bytes = _tlv(value_tag, _encode_unsigned_value(value))
+    """Monta uma resposta SNMP GET. Usado por testes e como referencia.
+
+    ``value`` em ``bytes`` produz um OCTET STRING, permitindo simular os OIDs
+    textuais de identificacao (nome, modelo, numero de serie).
+    """
+    if isinstance(value, bytes):
+        value_bytes = _tlv(_TAG_OCTET, value)
+    else:
+        value_bytes = _tlv(value_tag, _encode_unsigned_value(value))
     varbind = _tlv(_TAG_SEQUENCE, _encode_oid(oid) + value_bytes)
     varbind_list = _tlv(_TAG_SEQUENCE, varbind)
     pdu = _tlv(
@@ -286,7 +320,7 @@ def build_get_response(
 # --------------------------------------------------------------------------
 
 
-def snmp_get(
+def snmp_get_value(
     host: str,
     oid: str,
     community: str = "public",
@@ -294,11 +328,11 @@ def snmp_get(
     timeout: float = 2.0,
     retries: int = 1,
     version: str = "2c",
-) -> int:
-    """Executa um SNMP GET e retorna o valor inteiro do OID.
+) -> object:
+    """Executa um SNMP GET e retorna o valor bruto do OID (int ou bytes).
 
     Levanta ``SNMPTimeout`` se nao houver resposta e ``SNMPError`` para demais
-    falhas (erro do agente, OID nao suportado, valor nao numerico).
+    falhas (erro do agente, OID nao suportado).
     """
     request_id = random.randint(1, 0x7FFFFFFF)
     packet = build_get_request(community, oid, request_id, version)
@@ -371,8 +405,6 @@ def snmp_get(
                         )
                     if value is None:
                         raise SNMPError(f"OID nao suportado pela impressora: {oid}.")
-                    if not isinstance(value, int):
-                        raise SNMPError(f"Valor nao numerico retornado para {oid}.")
                     return value
                 if endpoint_failed:
                     break
@@ -387,12 +419,213 @@ def snmp_get(
     raise SNMPTimeout(f"Sem resposta de {host}:{port} para {oid}.")
 
 
+def snmp_get(
+    host: str,
+    oid: str,
+    community: str = "public",
+    port: int = 161,
+    timeout: float = 2.0,
+    retries: int = 1,
+    version: str = "2c",
+) -> int:
+    """SNMP GET de um OID numerico (contadores)."""
+    value = snmp_get_value(
+        host,
+        oid,
+        community=community,
+        port=port,
+        timeout=timeout,
+        retries=retries,
+        version=version,
+    )
+    if not isinstance(value, int):
+        raise SNMPError(f"Valor nao numerico retornado para {oid}.")
+    return value
+
+
+def snmp_get_text(
+    host: str,
+    oid: str,
+    community: str = "public",
+    port: int = 161,
+    timeout: float = 2.0,
+    retries: int = 0,
+    version: str = "2c",
+) -> str:
+    """SNMP GET de um OID textual (nome, descricao, serie), ja decodificado."""
+    value = snmp_get_value(
+        host,
+        oid,
+        community=community,
+        port=port,
+        timeout=timeout,
+        retries=retries,
+        version=version,
+    )
+    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+    # Equipamentos costumam devolver descricoes com quebras de linha e padding.
+    return " ".join(text.split()).strip("\x00 ")
+
+
+# --------------------------------------------------------------------------
+# Identificacao do equipamento
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PrinterIdentity:
+    """Dados de identificacao lidos de um equipamento na rede."""
+
+    ip: str
+    name: str | None = None  # sysName — o nome dado pelo administrador
+    description: str | None = None  # sysDescr — marca/modelo/firmware
+    location: str | None = None  # sysLocation — setor, quando preenchido
+    model: str | None = None
+    serial: str | None = None
+    counter: int | None = None
+
+    @property
+    def responded(self) -> bool:
+        """Se o equipamento respondeu a qualquer uma das consultas."""
+        return any([self.name, self.description, self.model, self.counter is not None])
+
+    @property
+    def suggested_name(self) -> str:
+        """Melhor nome disponivel para cadastrar automaticamente."""
+        for candidate in (self.name, self.model, self.description):
+            if candidate and candidate.strip():
+                # sysDescr costuma ser uma frase inteira; corta no essencial.
+                return candidate.strip()[:60]
+        return f"Impressora {self.ip}"
+
+
+def _quiet_text(host: str, oid: str, **kwargs) -> str | None:
+    """Le um OID textual devolvendo ``None`` em vez de levantar erro."""
+    try:
+        return snmp_get_text(host, oid, **kwargs) or None
+    except SNMPError:
+        return None
+
+
+def identify(
+    ip: str,
+    community: str = "public",
+    port: int = 161,
+    timeout: float = 1.0,
+    version: str = "2c",
+    read_counter: bool = True,
+) -> PrinterIdentity:
+    """Le nome, modelo, serie e contador de um equipamento, sem levantar erro.
+
+    Cada campo ausente vira ``None``: o objetivo e enriquecer o cadastro com o
+    que o equipamento oferecer, nunca falhar por causa de um OID que determinado
+    modelo nao implementa. E o que permite a descoberta cadastrar
+    "RICOH IM C3000 - Recepcao" em vez de "Impressora 192.168.20.31".
+    """
+    kwargs = {
+        "community": community,
+        "port": port,
+        "timeout": timeout,
+        "retries": 0,
+        "version": version,
+    }
+    description = _quiet_text(ip, OID_SYS_DESCR, **kwargs)
+    model = _quiet_text(ip, OID_HR_DEVICE_DESCR, **kwargs)
+    counter = None
+    if read_counter:
+        try:
+            counter = read_total_counter(
+                ip,
+                community=community,
+                port=port,
+                timeout=timeout,
+                retries=0,
+                version=version,
+            )[0]
+        except SNMPError:
+            counter = None
+    return PrinterIdentity(
+        ip=ip,
+        name=_quiet_text(ip, OID_SYS_NAME, **kwargs),
+        description=description,
+        location=_quiet_text(ip, OID_SYS_LOCATION, **kwargs),
+        model=model or description,
+        serial=_quiet_text(ip, OID_PRT_SERIAL, **kwargs),
+        counter=counter,
+    )
+
+
+# --------------------------------------------------------------------------
+# Leitura do contador
+# --------------------------------------------------------------------------
+
+
+def read_total_counter(
+    ip: str,
+    community: str = "public",
+    port: int = 161,
+    timeout: float = 2.0,
+    retries: int = 1,
+    version: str = "2c",
+    oids: tuple[str, ...] = COMMON_TOTAL_COUNTER_OIDS,
+) -> tuple[int, str]:
+    """Le o contador total tentando os OIDs conhecidos em ordem.
+
+    Retorna ``(contador, oid_usado)`` e levanta ``SNMPError`` com uma mensagem
+    voltada ao usuario quando nenhum responde — distinguindo "o equipamento nao
+    respondeu" de "respondeu, mas nao expoe o contador", porque a acao corretiva
+    e diferente em cada caso.
+    """
+    unreachable = False
+    last_error: Exception | None = None
+    # Palpites de fabricante nao merecem a espera inteira: um agente real apenas
+    # ignora o OID que nao conhece, entao cada tentativa custaria um timeout.
+    vendor_timeout = min(timeout, 1.0)
+    for index, oid in enumerate(oids):
+        is_standard = index == 0
+        try:
+            value = snmp_get(
+                ip,
+                oid,
+                community=community,
+                port=port,
+                timeout=timeout if is_standard else vendor_timeout,
+                # Apenas o OID padrao merece as tentativas extras configuradas.
+                retries=retries if is_standard else 0,
+                version=version,
+            )
+        except SNMPTimeout as exc:
+            last_error = exc
+            if is_standard:
+                # Se nem o OID padrao respondeu, o equipamento esta inacessivel
+                # ou com SNMP desligado: percorrer o resto so faria esperar.
+                unreachable = True
+                break
+            # Silencio em um OID de fabricante significa "nao implementado";
+            # continuar e o proposito da lista.
+        except SNMPError as exc:
+            last_error = exc
+        else:
+            if value >= 0:
+                return value, oid
+
+    if unreachable:
+        raise SNMPTimeout(
+            f"{ip} nao respondeu ao SNMP. Verifique se o equipamento esta ligado, "
+            "se o SNMP esta habilitado no painel dele e se a comunidade de "
+            "leitura confere (normalmente “public”)."
+        )
+    raise SNMPError(
+        f"{ip} respondeu, mas nao informou o contador de paginas em nenhum dos "
+        f"OIDs conhecidos. Ultimo erro: {last_error}"
+    )
+
+
 class SNMPBackend:
     """Backend real: le o contador total via SNMP.
 
     Segue a mesma interface de ``collector.CounterBackend``, podendo substituir o
-    backend mockado sem alterar o restante do codigo. Tenta os OIDs candidatos em
-    ordem e levanta ``SNMPError`` se nenhum responder.
+    backend mockado sem alterar o restante do codigo.
     """
 
     def __init__(self, config: Config, oids: tuple[str, ...] = COMMON_TOTAL_COUNTER_OIDS):
@@ -400,18 +633,13 @@ class SNMPBackend:
         self.oids = oids
 
     def read_total_counter(self, printer: Printer) -> int:
-        last_error: Exception | None = None
-        for oid in self.oids:
-            try:
-                return snmp_get(
-                    printer.ip,
-                    oid,
-                    community=self.config.snmp_community,
-                    port=self.config.snmp_port,
-                    timeout=self.config.snmp_timeout,
-                    retries=self.config.snmp_retries,
-                    version=self.config.snmp_version,
-                )
-            except SNMPError as exc:
-                last_error = exc
-        raise SNMPError(f"Falha ao ler contador de {printer.ip}: {last_error}")
+        counter, _oid = read_total_counter(
+            printer.ip,
+            community=self.config.snmp_community,
+            port=self.config.snmp_port,
+            timeout=self.config.snmp_timeout,
+            retries=self.config.snmp_retries,
+            version=self.config.snmp_version,
+            oids=self.oids,
+        )
+        return counter
