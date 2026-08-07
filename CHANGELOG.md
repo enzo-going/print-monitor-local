@@ -3,6 +3,19 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.3.1] — 2026-08-07
+
+### Corrigido
+
+- O aplicativo abre no navegador padrão quando a janela nativa não pode ser
+  criada. A janela depende do runtime **WebView2**, que não vem instalado no
+  Windows Server — onde a ferramenta costuma ficar, justamente por ser a máquina
+  que fica ligada para a coleta diária. Antes, a falta do runtime só produzia uma
+  caixa de erro e o encerramento: o programa estava inteiro e funcionando, mas
+  não havia como chegar até ele sem linha de comando. A alternativa pelo
+  navegador já existia para o caso de o pywebview não estar instalado; agora vale
+  também quando ele está presente e mesmo assim não consegue abrir a janela.
+
 ## [1.3.0] — 2026-07-31
 
 Foco no atrito de quem cadastra e diagnostica as impressoras, e em fazer a
