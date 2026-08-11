@@ -97,9 +97,8 @@ def run_app() -> int:
         return 1
 
     url = f"http://{HOST}:{port}/"
-    try:
-        import webview
-    except ImportError:
+
+    def open_in_browser() -> int:
         # Alternativa: navegador padrao. Mantem o processo vivo.
         import webbrowser
 
@@ -107,8 +106,19 @@ def run_app() -> int:
         threading.Event().wait()
         return 0
 
-    webview.create_window(WINDOW_TITLE, url, width=1180, height=820, min_size=(900, 600))
-    webview.start()
+    try:
+        import webview
+    except ImportError:
+        return open_in_browser()
+
+    try:
+        webview.create_window(WINDOW_TITLE, url, width=1180, height=820, min_size=(900, 600))
+        webview.start()
+    except Exception:
+        # A janela nativa depende do WebView2, ausente por padrao no Windows
+        # Server. Sem esta alternativa o app so mostraria um erro e encerraria,
+        # justamente na maquina onde ele deve rodar todo dia.
+        return open_in_browser()
     return 0
 
 
