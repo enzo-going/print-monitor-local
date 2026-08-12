@@ -69,9 +69,3 @@ exports/
 
 # Banco temporário para gerar capturas de tela da documentação
 .demo/
-
-# Configuracao local de ferramentas de desenvolvimento
-.claude/
-CLAUDE.md
-AGENTS.md
-.mcp.json
