@@ -3,6 +3,28 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.4.0] — 2026-08-12
+
+### Adicionado
+
+- Publicação no servidor por script: `scripts/publicar-no-servidor.ps1` monta o
+  pacote e copia para o destino, e `scripts/instalar-no-servidor.ps1` faz a parte
+  que precisa rodar lá dentro. O procedimento existia só na cabeça de quem
+  instalou da primeira vez.
+
+### Corrigido
+
+- O diagnóstico de uma impressora que não responde passa a distinguir
+  **equipamento desligado** de **SNMP desabilitado**. Antes, os dois casos
+  recebiam "verifique se o equipamento está ligado" — conselho inútil para uma
+  impressora que está ligada e atendendo na porta 9100, e que só precisa ter o
+  SNMP habilitado no painel. Quando o SNMP silencia, a ferramenta testa as portas
+  de impressão e web antes de concluir; se o host atende, a mensagem manda
+  habilitar o SNMP, e se não atende, lembra que impressoras em DHCP trocam de
+  endereço sozinhas.
+- A mensagem estava duplicada em três lugares (coleta, teste de conexão na tela e
+  comando `test`), então cada um dizia uma coisa. Agora sai de `diagnose_silence`.
+
 ## [1.3.1] — 2026-08-07
 
 ### Corrigido
