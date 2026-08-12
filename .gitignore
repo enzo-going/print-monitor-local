@@ -69,3 +69,7 @@ exports/
 
 # Banco temporário para gerar capturas de tela da documentação
 .demo/
+
+# Configuracao local de ferramentas de desenvolvimento
+AGENTS.md
+.mcp.json
