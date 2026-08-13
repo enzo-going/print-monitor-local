@@ -32,7 +32,26 @@ param(
 
 $ErrorActionPreference = "Stop"
 $raiz = Split-Path -Parent $PSScriptRoot
-Set-Location $raiz
+# O pacote fica em src\ e nao e instalado no ambiente, entao "python -m
+# print_monitor" so resolve com src\ como diretorio de trabalho. E o mesmo
+# diretorio que as tarefas agendadas usam.
+$src = Join-Path $raiz "src"
+Set-Location $src
+
+# As tarefas rodam como SYSTEM, para funcionarem sem ninguem logado no servidor.
+# Registrar assim exige elevacao; sem esta checagem o script so descobriria isso
+# no fim, com um "Acesso negado" cru depois de ja ter preparado o ambiente.
+$identidade = [Security.Principal.WindowsIdentity]::GetCurrent()
+$ehAdmin = (New-Object Security.Principal.WindowsPrincipal $identidade).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $ehAdmin) {
+    throw @"
+Este script precisa ser executado como administrador.
+
+Abra o PowerShell com "Executar como administrador" e rode de novo:
+    powershell -ExecutionPolicy Bypass -File $PSCommandPath
+"@
+}
 
 Write-Host "=== print-monitor: instalacao no servidor ==="
 Write-Host "Pasta: $raiz"
@@ -51,13 +70,24 @@ Write-Host "Instalando/atualizando dependencias do painel..."
 & $python -m pip install --disable-pip-version-check -q --upgrade pip flask
 if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar as dependencias." }
 
-$versao = (& $python -c "import sys; sys.path.insert(0,'src'); import print_monitor; print(print_monitor.__version__)").Trim()
+$versao = (& $python -c "import print_monitor; print(print_monitor.__version__)").Trim()
 Write-Host "Versao instalada: $versao"
 
+# Confere que os comandos existem ANTES de registrar tarefas que os chamam. Uma
+# tarefa apontando para um argumento invalido falha em silencio no Agendador, e
+# o painel simplesmente nunca sobe -- sem nada obvio indicando o motivo.
+foreach ($comando in @(@("collect", "--help"), @("serve", "--help"))) {
+    $saida = & $python -m print_monitor @comando 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $saida
+        throw "O comando 'print-monitor $($comando -join ' ')' falhou. Instalacao interrompida."
+    }
+}
+Write-Host "Comandos conferidos."
+
 # --- 2. Banco ------------------------------------------------------------
-# Roda a partir de src\ para o pacote ser importavel sem instalacao; o banco e
-# resolvido pelo caminho do modulo, entao continua em <raiz>\data.
-$src = Join-Path $raiz "src"
+# O trabalho roda a partir de src\ para o pacote ser importavel sem instalacao;
+# o banco e resolvido pelo caminho do modulo, entao continua em <raiz>\data.
 & $python -m print_monitor init
 Write-Host ""
 
@@ -73,17 +103,21 @@ $gatilhoColeta = New-ScheduledTaskTrigger -Daily -At $Horario
 # acontece assim que ele voltar, em vez de perder o dia.
 $config = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+# Sem -User, o principal fica com LogonType Interactive e a tarefa so dispara
+# com aquele usuario logado -- num servidor, onde ninguem fica logado, a coleta
+# simplesmente nunca rodaria. Como SYSTEM: o trabalho e todo local (SQLite e
+# SNMP na LAN), nao depende de compartilhamento de rede.
 Register-ScheduledTask -TaskName "PrintMonitor-Coleta" -Action $acaoColeta `
-    -Trigger $gatilhoColeta -Settings $config -RunLevel Highest `
+    -Trigger $gatilhoColeta -Settings $config -User "SYSTEM" -RunLevel Highest `
     -Description "Coleta diaria dos contadores das impressoras." -Force | Out-Null
-Write-Host "Tarefa PrintMonitor-Coleta registrada para as $Horario."
+Write-Host "Tarefa PrintMonitor-Coleta registrada para as $Horario (como SYSTEM)."
 
 # --- 4. Painel -----------------------------------------------------------
 if (-not $SemPainel) {
     # O painel nao tem login e so aceita conexoes locais por decisao de projeto:
     # quem for consultar abre o navegador dentro do proprio servidor.
     $acaoPainel = New-ScheduledTaskAction -Execute $executavel `
-        -Argument "-m print_monitor serve --port $Porta --no-browser" -WorkingDirectory $src
+        -Argument "-m print_monitor serve --port $Porta" -WorkingDirectory $src
     $gatilhoPainel = New-ScheduledTaskTrigger -AtStartup
     $configPainel = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
         -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
