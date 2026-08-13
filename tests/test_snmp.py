@@ -20,6 +20,8 @@ from print_monitor.snmp import (
     _encode_oid,
     build_get_request,
     build_get_response,
+    diagnose_silence,
+    host_is_reachable,
     identify,
     parse_response,
     read_total_counter,
@@ -328,7 +330,8 @@ def test_read_total_counter_sem_resposta_orienta_o_usuario():
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
     try:
-        with pytest.raises(SNMPTimeout, match="SNMP esta habilitado"):
+        # Nada atende TCP no loopback aqui, entao o diagnostico e "host morto".
+        with pytest.raises(SNMPTimeout, match="ligado e conectado"):
             read_total_counter("127.0.0.1", port=port, timeout=0.3, retries=0)
     finally:
         sock.close()
@@ -357,3 +360,51 @@ def test_identity_sem_resposta_sugere_nome_pelo_ip():
         sock.close()
     assert ident.responded is False
     assert ident.suggested_name == "Impressora 127.0.0.1"
+
+
+# -- diagnostico de silencio do SNMP --------------------------------------
+
+
+def test_host_is_reachable_detecta_porta_aberta():
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+    porta = srv.getsockname()[1]
+    try:
+        assert host_is_reachable("127.0.0.1", ports=(porta,), timeout=1.0) is True
+    finally:
+        srv.close()
+
+
+def test_host_is_reachable_falso_quando_nada_atende():
+    livre = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    livre.bind(("127.0.0.1", 0))
+    porta = livre.getsockname()[1]
+    livre.close()
+    assert host_is_reachable("127.0.0.1", ports=(porta,), timeout=0.3) is False
+
+
+def test_diagnose_silence_separa_desligado_de_snmp_desabilitado(monkeypatch):
+    """Dizer 'verifique se esta ligado' para um host online faz perder tempo."""
+    monkeypatch.setattr("print_monitor.snmp.host_is_reachable", lambda ip, **kw: True)
+    vivo = diagnose_silence("192.0.2.10")
+    assert "ligado e acessivel" in vivo
+    assert "Habilite o SNMP" in vivo
+
+    monkeypatch.setattr("print_monitor.snmp.host_is_reachable", lambda ip, **kw: False)
+    morto = diagnose_silence("192.0.2.11")
+    assert "esta ligado e conectado" in morto
+    assert "DHCP" in morto
+
+
+def test_read_total_counter_usa_o_diagnostico(monkeypatch):
+    """A mensagem de timeout tem de refletir o estado real do host."""
+    monkeypatch.setattr("print_monitor.snmp.host_is_reachable", lambda ip, **kw: True)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    try:
+        with pytest.raises(SNMPTimeout, match="Habilite o SNMP"):
+            read_total_counter("127.0.0.1", port=port, timeout=0.3, retries=0)
+    finally:
+        sock.close()
