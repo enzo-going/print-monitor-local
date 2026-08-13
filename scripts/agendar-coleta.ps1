@@ -64,6 +64,25 @@ if ($Time -notmatch '^\d{1,2}:\d{2}$') {
     throw "Horario invalido '$Time'. Use o formato HH:mm, por exemplo 08:00."
 }
 
+# Registrar uma tarefa que roda sem ninguem logado exige elevacao. Sem esta
+# checagem, o Register-ScheduledTask estoura um "Acesso negado" cru no fim do
+# script, depois de ja ter impresso que ia dar tudo certo.
+$identidade = [Security.Principal.WindowsIdentity]::GetCurrent()
+$ehAdmin = (New-Object Security.Principal.WindowsPrincipal $identidade).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $ehAdmin) {
+    throw @"
+Este script precisa ser executado como administrador.
+
+A coleta e registrada para rodar como SYSTEM, para funcionar mesmo sem ninguem
+logado -- que e o ponto de uma coleta diaria. Isso exige elevacao.
+
+Abra o PowerShell com "Executar como administrador" e rode de novo:
+    cd '$repoRoot'
+    .\scripts\agendar-coleta.ps1 -Time '$Time'
+"@
+}
+
 # --- Descobre como executar a coleta -------------------------------------
 $execute = $null
 $argumento = $null
@@ -122,11 +141,17 @@ $trigger = New-ScheduledTaskTrigger -Daily -At $Time
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
+# Sem -User, o principal fica com LogonType Interactive: a tarefa so dispara
+# enquanto aquele usuario estiver logado. Como a coleta e uma rotina de fundo --
+# e num servidor ninguem fica logado --, ela roda como SYSTEM. O trabalho e todo
+# local (SQLite e SNMP na LAN) e nao depende de compartilhamento de rede.
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-    -Settings $settings -Description "Coleta diaria de contadores das impressoras (print-monitor)." `
+    -Settings $settings -User "SYSTEM" -RunLevel Highest `
+    -Description "Coleta diaria de contadores das impressoras (print-monitor)." `
     -Force | Out-Null
 
 Write-Host ""
-Write-Host "Tarefa registrada. Para conferir:  Get-ScheduledTask -TaskName '$TaskName'"
+Write-Host "Tarefa registrada (roda como SYSTEM, mesmo sem ninguem logado)."
+Write-Host "Para conferir:                     Get-ScheduledTask -TaskName '$TaskName'"
 Write-Host "Para testar agora:                 Start-ScheduledTask -TaskName '$TaskName'"
 Write-Host "Para remover:                      .\scripts\agendar-coleta.ps1 -Remover"

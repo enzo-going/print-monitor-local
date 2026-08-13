@@ -218,7 +218,7 @@ def cmd_test(args: argparse.Namespace) -> int:
     desabilitado" sem precisar cadastrar nada antes.
     """
     from .netaddr import IPError, normalize_ip
-    from .snmp import SNMPError, identify
+    from .snmp import SNMPError, diagnose_silence, identify
 
     config = load_config()
     try:
@@ -242,12 +242,7 @@ def cmd_test(args: argparse.Namespace) -> int:
         return 1
 
     if not ident.responded:
-        print(
-            f"Erro: {ip} nao respondeu ao SNMP. Verifique se o equipamento esta "
-            "ligado, se o SNMP esta habilitado nele e se a comunidade de leitura "
-            "confere.",
-            file=sys.stderr,
-        )
+        print(f"Erro: {diagnose_silence(ip)}", file=sys.stderr)
         return 1
 
     print(f"Endereco:  {ip}")

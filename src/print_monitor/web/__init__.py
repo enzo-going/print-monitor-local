@@ -657,7 +657,7 @@ def create_app(
         Descobrir na hora do cadastro que o IP esta errado evita um mes inteiro
         de coletas vazias percebido so no fechamento.
         """
-        from ..snmp import SNMPError, identify
+        from ..snmp import SNMPError, diagnose_silence, identify
 
         try:
             ip = normalize_ip(request.form.get("ip", ""))
@@ -684,13 +684,7 @@ def create_app(
                 "serie": ident.serial,
                 "local": ident.location,
                 "contador": ident.counter,
-                "erro": None
-                if ident.responded
-                else (
-                    f"{ip} não respondeu ao SNMP. Verifique se o equipamento está "
-                    "ligado, se o SNMP está habilitado no painel dele e se o IP "
-                    "está correto."
-                ),
+                "erro": None if ident.responded else diagnose_silence(ip),
             }
         )
 

@@ -541,6 +541,10 @@ def identify(
                 timeout=timeout,
                 retries=0,
                 version=version,
+                # A mensagem e descartada logo abaixo; nao vale sondar a rede
+                # para monta-la. Na descoberta isso ainda seria redundante,
+                # porque o host acabou de ser encontrado por varredura TCP.
+                diagnose=False,
             )[0]
         except SNMPError:
             counter = None
@@ -560,6 +564,50 @@ def identify(
 # --------------------------------------------------------------------------
 
 
+# Portas que denunciam um equipamento vivo na rede. Servem apenas para separar
+# "desligado / IP errado" de "ligado, mas com o SNMP desabilitado" — dois
+# problemas com solucoes bem diferentes.
+LIVENESS_PORTS = (9100, 80, 631)
+
+
+def host_is_reachable(
+    ip: str, ports: tuple[int, ...] = LIVENESS_PORTS, timeout: float = 0.3
+) -> bool:
+    """Diz se algo atende TCP no endereco, sem depender do SNMP.
+
+    So e chamada no caminho de falha, entao o custo (algumas centenas de
+    milissegundos) nao entra na coleta bem-sucedida.
+    """
+    for port in ports:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def diagnose_silence(ip: str) -> str:
+    """Explica por que o equipamento nao respondeu ao SNMP, e o que fazer.
+
+    Um host que atende nas portas de impressao esta ligado e alcancavel: mandar
+    "verifique se o equipamento esta ligado" nesse caso desperdica o tempo de
+    quem for investigar. O silencio ali e do SNMP, nao da rede — e a correcao
+    fica no painel do equipamento, nao no cabo.
+    """
+    if host_is_reachable(ip):
+        return (
+            f"{ip} esta ligado e acessivel na rede, mas nao respondeu ao SNMP. "
+            "Habilite o SNMP no painel de configuracao do equipamento, ou confira "
+            "se a comunidade de leitura cadastrada e a mesma configurada nele."
+        )
+    return (
+        f"{ip} nao respondeu. Verifique se o equipamento esta ligado e conectado "
+        "a rede, e se o IP ainda e esse — impressoras em DHCP trocam de endereco "
+        "sozinhas."
+    )
+
+
 def read_total_counter(
     ip: str,
     community: str = "public",
@@ -568,6 +616,7 @@ def read_total_counter(
     retries: int = 1,
     version: str = "2c",
     oids: tuple[str, ...] = COMMON_TOTAL_COUNTER_OIDS,
+    diagnose: bool = True,
 ) -> tuple[int, str]:
     """Le o contador total tentando os OIDs conhecidos em ordem.
 
@@ -610,11 +659,10 @@ def read_total_counter(
                 return value, oid
 
     if unreachable:
-        raise SNMPTimeout(
-            f"{ip} nao respondeu ao SNMP. Verifique se o equipamento esta ligado, "
-            "se o SNMP esta habilitado no painel dele e se a comunidade de "
-            "leitura confere (normalmente “public”)."
-        )
+        # O diagnostico custa ate 3 conexoes TCP. Quem so quer saber se leu ou
+        # nao -- e descarta a mensagem -- passa diagnose=False e nao paga por
+        # um texto que nunca sera lido.
+        raise SNMPTimeout(diagnose_silence(ip) if diagnose else f"{ip} nao respondeu ao SNMP.")
     raise SNMPError(
         f"{ip} respondeu, mas nao informou o contador de paginas em nenhum dos "
         f"OIDs conhecidos. Ultimo erro: {last_error}"

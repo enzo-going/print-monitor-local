@@ -3,6 +3,51 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 Versionamento conforme [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.4.0] — 2026-08-12
+
+### Adicionado
+
+- Publicação no servidor por script: `scripts/publicar-no-servidor.ps1` monta o
+  pacote e copia para o destino, e `scripts/instalar-no-servidor.ps1` faz a parte
+  que precisa rodar lá dentro. O procedimento existia só na cabeça de quem
+  instalou da primeira vez.
+
+### Corrigido
+
+- O diagnóstico de uma impressora que não responde passa a distinguir
+  **equipamento desligado** de **SNMP desabilitado**. Antes, os dois casos
+  recebiam "verifique se o equipamento está ligado" — conselho inútil para uma
+  impressora que está ligada e atendendo na porta 9100, e que só precisa ter o
+  SNMP habilitado no painel. Quando o SNMP silencia, a ferramenta testa as portas
+  de impressão e web antes de concluir; se o host atende, a mensagem manda
+  habilitar o SNMP, e se não atende, lembra que impressoras em DHCP trocam de
+  endereço sozinhas.
+- A mensagem estava duplicada em três lugares (coleta, teste de conexão na tela e
+  comando `test`), então cada um dizia uma coisa. Agora sai de `diagnose_silence`.
+- **"Cobertura parcial" deixa de aparecer em tudo, sempre.** O estado só era
+  "medido" quando havia uma leitura exatamente em 00:00:00.000000 do dia 1º —
+  algo que nunca acontece, porque a coleta roda em horário fixo. Na prática toda
+  impressora de todo mês vinha marcada como parcial: um aviso permanente, que
+  não distinguia nada e ainda escondia o caso que precisa de atenção. Agora
+  "parcial" significa o que deveria: **o período não está coberto de ponta a
+  ponta** — impressora cadastrada no meio do mês, ou coleta interrompida antes
+  do fim de um mês já encerrado. Um mês em andamento cuja cobertura vai até hoje
+  continua sendo "medido", e há dois dias de folga para feriado ou servidor
+  reiniciado.
+- A coleta diária passa a ser registrada para rodar como **SYSTEM**. Sem isso a
+  tarefa ficava com logon interativo e só disparava enquanto aquele usuário
+  estivesse logado — num servidor, onde ninguém fica logado, ela nunca rodaria e
+  o histórico pararia de acumular em silêncio. Os scripts agora avisam quando
+  precisam de elevação, em vez de falhar com "acesso negado" no fim.
+- `instalar-no-servidor.ps1` executava `python -m print_monitor` a partir da
+  raiz, onde o pacote não é importável, e abortava antes de registrar qualquer
+  tarefa. Passa a rodar de `src\`, como as próprias tarefas fazem, e confere os
+  comandos antes de criá-las.
+- A montagem do diagnóstico deixou de rodar quando ninguém vai ler a mensagem.
+  Ela custa até três conexões TCP, e era paga uma vez por host durante a
+  descoberta — onde é redundante, já que a varredura acabou de confirmar que o
+  host está vivo — e duas vezes no `test` e no botão Testar conexão.
+
 ## [1.3.1] — 2026-08-07
 
 ### Corrigido
