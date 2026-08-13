@@ -214,11 +214,37 @@ def test_monthly_report_fetches_baseline_from_database(db):
 
     report = monthly_report(db, 2026, 6)
 
+    # O que este teste garante e a busca da linha de base no banco: a leitura de
+    # 31/05 entra no calculo. O estado depende de quando o relatorio e aberto
+    # (junho em andamento ou ja encerrado) e tem testes proprios, que fixam
+    # esse instante em vez de depender do relogio.
     assert report[0].volume == 6543
     assert report[0].measurable is True
-    assert report[0].state == "partial"
     assert report[0].opening_counter == 120_000
     assert report[0].closing_counter == 126_543
+
+
+def test_coleta_diaria_normal_nao_e_marcada_como_parcial():
+    """A coleta roda em horario fixo e nunca cai na virada do mes.
+
+    Exigir coincidencia exata com a meia-noite marcava toda impressora de todo
+    mes como "cobertura parcial" — um aviso permanente, que nao distingue nada e
+    ainda esconde o caso que realmente precisa de atencao.
+    """
+    start, end = month_bounds(2026, 7)
+    leituras = [_reading(1_000, 2026, 6, 30)] + [
+        _reading(1_000 + dia * 10, 2026, 7, dia) for dia in range(1, 32)
+    ]
+    assert period_usage(leituras, start, end).state == "measured"
+
+
+def test_impressora_cadastrada_no_meio_do_mes_fica_parcial():
+    """Aqui o comeco do mes ficou mesmo sem medicao, e o total subestima."""
+    start, end = month_bounds(2026, 7)
+    leituras = [_reading(1_000 + dia * 10, 2026, 7, dia) for dia in range(15, 32)]
+    usage = period_usage(leituras, start, end)
+    assert usage.state == "partial"
+    assert usage.measurable is True
 
 
 def test_baseline_without_reading_in_month_has_no_false_coverage():
@@ -227,3 +253,51 @@ def test_baseline_without_reading_in_month_has_no_false_coverage():
     assert usage.state == "no_reading_in_period"
     assert usage.coverage_start is None
     assert usage.coverage_end is None
+
+
+# -- cobertura que termina antes do fim de um mes ja encerrado -------------
+
+
+def _mes_de_julho(dias: range, com_base: bool = True) -> list[Reading]:
+    leituras = [_reading(1_000, 2026, 6, 30)] if com_base else []
+    return leituras + [_reading(1_000 + dia * 10, 2026, 7, dia) for dia in dias]
+
+
+def test_mes_encerrado_com_coleta_interrompida_fica_parcial():
+    """Um total que cobre so meia julho nao pode se apresentar como completo.
+
+    O relatorio de julho aberto em agosto viraria numero de rateio; sem o aviso,
+    a subestimativa passa despercebida.
+    """
+    start, end = month_bounds(2026, 7)
+    usage = period_usage(
+        _mes_de_julho(range(1, 11)),
+        start,
+        end,
+        now=datetime(2026, 8, 12, tzinfo=UTC),
+    )
+    assert usage.state == "partial"
+
+
+def test_mes_em_andamento_nao_e_marcado_como_parcial():
+    """No mes corrente, a cobertura terminar hoje e o esperado, nao um defeito."""
+    start, end = month_bounds(2026, 7)
+    usage = period_usage(
+        _mes_de_julho(range(1, 16)),
+        start,
+        end,
+        now=datetime(2026, 7, 15, 12, tzinfo=UTC),
+    )
+    assert usage.state == "measured"
+
+
+def test_folga_de_dois_dias_nao_vira_alerta():
+    """Feriado ou servidor reiniciado no fim do mes e operacao normal."""
+    start, end = month_bounds(2026, 7)
+    usage = period_usage(
+        _mes_de_julho(range(1, 31)),
+        start,
+        end,
+        now=datetime(2026, 8, 12, tzinfo=UTC),
+    )
+    assert usage.state == "measured"

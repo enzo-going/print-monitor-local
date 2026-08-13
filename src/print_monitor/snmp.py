@@ -541,6 +541,10 @@ def identify(
                 timeout=timeout,
                 retries=0,
                 version=version,
+                # A mensagem e descartada logo abaixo; nao vale sondar a rede
+                # para monta-la. Na descoberta isso ainda seria redundante,
+                # porque o host acabou de ser encontrado por varredura TCP.
+                diagnose=False,
             )[0]
         except SNMPError:
             counter = None
@@ -612,6 +616,7 @@ def read_total_counter(
     retries: int = 1,
     version: str = "2c",
     oids: tuple[str, ...] = COMMON_TOTAL_COUNTER_OIDS,
+    diagnose: bool = True,
 ) -> tuple[int, str]:
     """Le o contador total tentando os OIDs conhecidos em ordem.
 
@@ -654,7 +659,10 @@ def read_total_counter(
                 return value, oid
 
     if unreachable:
-        raise SNMPTimeout(diagnose_silence(ip))
+        # O diagnostico custa ate 3 conexoes TCP. Quem so quer saber se leu ou
+        # nao -- e descarta a mensagem -- passa diagnose=False e nao paga por
+        # um texto que nunca sera lido.
+        raise SNMPTimeout(diagnose_silence(ip) if diagnose else f"{ip} nao respondeu ao SNMP.")
     raise SNMPError(
         f"{ip} respondeu, mas nao informou o contador de paginas em nenhum dos "
         f"OIDs conhecidos. Ultimo erro: {last_error}"

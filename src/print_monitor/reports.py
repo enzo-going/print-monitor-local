@@ -67,7 +67,29 @@ class PeriodUsage:
     reset_detected: bool = False
 
 
-def period_usage(readings: list[Reading], start: datetime, end: datetime) -> PeriodUsage:
+# Folga aceita entre a ultima leitura e o fim do periodo antes de considerar a
+# cobertura incompleta. Com coleta diaria, a ultima leitura de um mes cai no
+# ultimo dia; dois dias absorvem feriado, servidor reiniciado e afins sem
+# transformar operacao normal em alerta.
+COVERAGE_TOLERANCE = timedelta(days=2)
+
+
+def _coverage_ends_early(
+    coverage_end: datetime, period_end: datetime, now: datetime | None
+) -> bool:
+    """Diz se a cobertura parou bem antes do fim de um periodo ja encerrado."""
+    reference = now if now is not None else datetime.now(UTC)
+    if reference <= period_end:
+        return False  # periodo em andamento: terminar em "hoje" e o esperado
+    return coverage_end < period_end - COVERAGE_TOLERANCE
+
+
+def period_usage(
+    readings: list[Reading],
+    start: datetime,
+    end: datetime,
+    now: datetime | None = None,
+) -> PeriodUsage:
     """Calcula volume e cobertura no intervalo [start, end].
 
     Usa a ultima leitura anterior ao inicio como linha de base. Sem ela, duas
@@ -75,6 +97,10 @@ def period_usage(readings: list[Reading], start: datetime, end: datetime) -> Per
     isolada nao e apresentada como zero: o estado fica ``waiting_baseline``.
     Leituras identicas no mesmo instante formam um unico ponto; contadores
     divergentes nesse instante exigem revisao (``conflicting_readings``).
+
+    ``now`` permite distinguir um mes ainda em andamento -- em que a cobertura
+    terminar "hoje" e o esperado -- de um mes ja encerrado cuja coleta parou no
+    meio, caso em que o total subestima o periodo e precisa ser sinalizado.
     """
     ordered = sorted(
         (r for r in readings if r.collected_at <= end and not r.ignored),
@@ -142,10 +168,23 @@ def period_usage(readings: list[Reading], start: datetime, end: datetime) -> Per
         state = "counter_reset"
     elif total == 0:
         state = "no_increase"
-    elif points[0].collected_at == start:
-        state = "measured"
-    else:
+    elif points[0].collected_at > start:
+        # A primeira leitura ja esta dentro do mes: o comeco ficou sem medicao
+        # (impressora cadastrada no meio do periodo, ou coleta interrompida).
+        # Aqui o total realmente subestima o mes, e o aviso tem o que informar.
         state = "partial"
+    elif _coverage_ends_early(points[-1].collected_at, end, now):
+        # Mes ja encerrado cuja coleta parou antes do fim: o total cobre so
+        # parte do periodo. Sem isto, um relatorio de julho montado em agosto
+        # apareceria como medido e o numero subestimado iria para o rateio.
+        state = "partial"
+    else:
+        # Ha um ponto ancorando a abertura do mes e a cobertura vai ate o fim
+        # (ou ate hoje, num mes em andamento). Exigir coincidencia exata com a
+        # meia-noite do dia 1 marcaria como "parcial" toda impressora de todo
+        # mes -- a coleta roda em horario fixo e nunca cai no microssegundo da
+        # virada -- e um aviso permanente nao distingue nada de ninguem.
+        state = "measured"
     return PeriodUsage(
         volume=total,
         measurable=not reset_detected,
@@ -244,11 +283,15 @@ def monthly_report(
             if reading.printer_id in printer_ids:
                 readings_by_printer[reading.printer_id].append(reading)
 
+    # Um unico instante para todas as impressoras: o relatorio nao pode
+    # classificar uma como "em andamento" e outra como "encerrada" por causa de
+    # milissegundos entre as iteracoes.
+    agora = datetime.now(UTC)
     result: list[PrinterVolume] = []
     for printer in printers:
         assert printer.id is not None
         readings = readings_by_printer[printer.id]
-        usage = period_usage(readings, start, end)
+        usage = period_usage(readings, start, end, now=agora)
         result.append(
             PrinterVolume(
                 printer_id=printer.id,
