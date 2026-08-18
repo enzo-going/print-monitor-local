@@ -15,7 +15,8 @@
     docs\publicacao-servidor.md.
 
 .PARAMETER Servidor
-    IP ou nome do servidor. Padrao: <servidor>.
+    IP ou nome do servidor. Obrigatorio: sem valor padrao, para nao publicar
+    na maquina errada por engano.
 
 .PARAMETER Destino
     Caminho do programa NO SERVIDOR. Padrao: C:\PrintMonitor.
@@ -34,12 +35,13 @@
     Se o compartilhamento pedir credencial, monte-o antes com a conta LOCAL do
     servidor (a de dominio costuma receber acesso negado):
 
-        $cred = Get-Credential SERVIDOR\<conta-local>
-        New-PSDrive -Name S -PSProvider FileSystem -Root \\SERVIDOR\C$ -Credential $cred -Persist
+        $cred = Get-Credential "<servidor>\<conta-local>"
+        New-PSDrive -Name S -PSProvider FileSystem -Root "\\<servidor>\C$" -Credential $cred -Persist
 #>
 [CmdletBinding()]
 param(
-    [string]$Servidor = "<servidor>",
+    [Parameter(Mandatory = $true)]
+    [string]$Servidor,
     [string]$Destino = "C:\PrintMonitor",
     [switch]$Simular
 )
@@ -62,7 +64,7 @@ if (-not (Test-Path "\\$Servidor\$unidade`$")) {
 Sem acesso a \\$Servidor\$unidade`$.
 Monte o compartilhamento com a conta LOCAL do servidor e tente de novo:
 
-    `$cred = Get-Credential $Servidor\<conta-local>
+    `$cred = Get-Credential "$Servidor\<conta-local>"
     New-PSDrive -Name S -PSProvider FileSystem -Root \\$Servidor\$unidade`$ -Credential `$cred -Persist
 "@
 }
