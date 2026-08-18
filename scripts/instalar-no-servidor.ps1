@@ -11,8 +11,8 @@
     reescreve as tarefas e nunca toca no banco em data\.
 
 .PARAMETER Porta
-    Porta do painel. Padrao: 5056. NAO use 5000 no servidor do CAMPS -- e do
-    Certificador ICP-Brasil.
+    Porta do painel. Padrao: 5056. Confira antes se ela esta livre no servidor:
+    a 5000 costuma estar ocupada por outros servicos.
 
 .PARAMETER Horario
     Horario da coleta diaria (HH:mm). Padrao: 08:00.

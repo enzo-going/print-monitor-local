@@ -21,8 +21,9 @@ A conta de domínio costuma receber acesso negado no `C$`; a conta **local** do
 servidor funciona. Digite a senha você mesmo:
 
 ```powershell
-$cred = Get-Credential 192.168.20.29\Administrador
-New-PSDrive -Name S -PSProvider FileSystem -Root \\192.168.20.29\C$ -Credential $cred -Persist
+$servidor = "nome-ou-ip-do-servidor"
+$cred = Get-Credential "$servidor\<conta-local>"
+New-PSDrive -Name S -PSProvider FileSystem -Root "\\$servidor\C$" -Credential $cred -Persist
 ```
 
 A sessão SMB vale para todo o logon. Se o `net use` parecer travado ao pedir a
@@ -51,19 +52,21 @@ powershell -ExecutionPolicy Bypass -File C:\PrintMonitor\scripts\instalar-no-ser
 Ele cria/atualiza o ambiente Python, registra as duas tarefas agendadas e
 reinicia o painel na versão nova. Pode ser executado a cada atualização.
 
-## Particularidades do servidor do CAMPS (192.168.20.29)
+## Armadilhas comuns em servidor Windows
 
-- **Porta 5056**, não 5000 — a 5000 é do Certificador ICP-Brasil.
-- **Não tem WebView2** (Windows Server 2016), então o modo "janela nativa" não
-  funciona ali. Desde a 1.3.1 o programa cai para o navegador padrão sozinho.
-- O painel **não tem login** e por isso só aceita conexões de `localhost`. Ele
-  se consulta pelo navegador dentro do próprio servidor; a porta aparecer
-  fechada de fora é o comportamento esperado, não uma falha.
-- O perfil ativo é `C:\Users\Administrador.WIN-GU00V3BG4E1` (nome antigo da
-  máquina). Atalho colocado em `C:\Users\Administrador` não aparece para
-  ninguém.
-- A máquina é PDC do domínio, além de DHCP/DNS/IIS: nada de reiniciar serviço de
-  borda fora de janela agendada.
+- **Escolha uma porta livre** e confira antes: outro serviço já pode estar na
+  porta padrão. `-Porta` existe para isso.
+- **Windows Server sem WebView2** não abre o modo "janela nativa". Desde a 1.3.1
+  o programa cai para o navegador padrão sozinho.
+- O painel **não tem login** e por isso só aceita conexões de `localhost`.
+  Consulte-o pelo navegador dentro do próprio servidor; a porta aparecer fechada
+  de fora é o comportamento esperado, não uma falha. Para expor além do host,
+  coloque um proxy reverso com autenticação na frente.
+- **Se a máquina foi renomeada**, o perfil ativo pode estar em
+  `C:\Users\<conta>.<NOME-ANTIGO>`. Atalho criado em `C:\Users\<conta>` não
+  aparece para ninguém. Confira com `$env:USERPROFILE`.
+- **Se o servidor também for controlador de domínio ou DNS/DHCP**, trate
+  reinício de serviço como mudança de borda: só em janela agendada.
 
 ## Conferir depois
 
