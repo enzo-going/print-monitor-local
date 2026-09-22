@@ -325,12 +325,15 @@ def test_read_total_counter_cai_para_oid_de_fabricante():
     assert (valor, usado) == (4242, oid_ricoh)
 
 
-def test_read_total_counter_sem_resposta_orienta_o_usuario():
+def test_read_total_counter_sem_resposta_orienta_o_usuario(monkeypatch):
+    # O diagnostico sonda portas TCP para decidir a mensagem. Sem fixar essa
+    # sondagem, o teste passa a depender de nada estar escutando em 127.0.0.1 --
+    # e qualquer servico local na 80, 631 ou 9100 o levaria ao outro ramo.
+    monkeypatch.setattr("print_monitor.snmp.host_is_reachable", lambda ip, **kw: False)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
     try:
-        # Nada atende TCP no loopback aqui, entao o diagnostico e "host morto".
         with pytest.raises(SNMPTimeout, match="ligado e conectado"):
             read_total_counter("127.0.0.1", port=port, timeout=0.3, retries=0)
     finally:
