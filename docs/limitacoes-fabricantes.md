@@ -62,8 +62,8 @@ Além do contador, a ferramenta lê, quando disponível:
 | Nº de série   | `1.3.6.1.2.1.43.5.1.1.17.1`  |
 
 Campos ausentes ficam vazios; nenhum é obrigatório para a coleta funcionar. É o
-que permite à descoberta cadastrar “RICOH IM C3000 — Recepção” em vez de
-“Impressora 192.168.20.31”.
+que permite à descoberta cadastrar “RICOH IM C3000 — Andar 1” em vez de
+“Impressora 192.0.2.31”.
 
 ## Estratégia adotada
 

@@ -25,22 +25,33 @@ from print_monitor.config import load_config  # noqa: E402
 from print_monitor.db import Database  # noqa: E402
 from print_monitor.printers import register_printer  # noqa: E402
 
-# Impressoras ficticias (IPs de redes privadas, sem qualquer dado real).
+# Impressoras ficticias. Os IPs saem de 192.0.2.0/24, faixa que a RFC 5737
+# reserva para documentacao: nenhum equipamento real responde nesses enderecos.
 SAMPLE_PRINTERS = [
     {
-        "name": "HP LaserJet - Recepcao",
-        "ip": "192.168.10.21",
-        "location": "Recepcao",
+        "name": "Impressora A - Andar 1",
+        "ip": "192.0.2.21",
+        "location": "Andar 1",
         "model": "HP M404",
     },
     {
-        "name": "Brother - Financeiro",
-        "ip": "192.168.10.22",
-        "location": "Financeiro",
+        "name": "Impressora B - Andar 2",
+        "ip": "192.0.2.22",
+        "location": "Andar 2",
         "model": "Brother L2540",
     },
-    {"name": "Xerox - TI", "ip": "192.168.10.23", "location": "TI", "model": "Xerox B210"},
-    {"name": "Epson - RH", "ip": "192.168.10.24", "location": "RH", "model": "Epson L3250"},
+    {
+        "name": "Impressora C - Andar 3",
+        "ip": "192.0.2.23",
+        "location": "Andar 3",
+        "model": "Xerox B210",
+    },
+    {
+        "name": "Impressora D - Almoxarifado",
+        "ip": "192.0.2.24",
+        "location": "Almoxarifado",
+        "model": "Epson L3250",
+    },
 ]
 
 # Meses (ano, mes) para os quais geramos leituras de inicio e fim.

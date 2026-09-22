@@ -130,8 +130,8 @@ responder, a busca para imediatamente: o equipamento está inacessível, e insis
 só faria o usuário esperar.
 
 A ferramenta também lê `sysName`, modelo e número de série, o que permite à
-descoberta sugerir “RICOH IM C3000 — Recepção” em vez de
-“Impressora 192.168.20.31”.
+descoberta sugerir “RICOH IM C3000 — Andar 1” em vez de
+“Impressora 192.0.2.31”.
 
 Impressoras incompatíveis ou inacessíveis são registradas como falha sem
 interromper a coleta das demais. As consultas rodam em paralelo (8 por padrão)
