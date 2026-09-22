@@ -520,7 +520,7 @@ def identify(
     Cada campo ausente vira ``None``: o objetivo e enriquecer o cadastro com o
     que o equipamento oferecer, nunca falhar por causa de um OID que determinado
     modelo nao implementa. E o que permite a descoberta cadastrar
-    "RICOH IM C3000 - Recepcao" em vez de "Impressora 192.168.20.31".
+    "RICOH IM C3000 - Andar 1" em vez de "Impressora 192.0.2.31".
     """
     kwargs = {
         "community": community,
