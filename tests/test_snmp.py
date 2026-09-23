@@ -270,7 +270,12 @@ def test_snmp_backend_passes_configured_v1(monkeypatch):
     assert received["version"] == "1"
 
 
-def test_snmp_backend_raises_on_unsupported_oid():
+def test_snmp_backend_raises_on_unsupported_oid(monkeypatch):
+    # Sem resposta ao OID padrao, o backend cai no diagnostico, que sonda as
+    # portas 9100, 80 e 631 do host. A asercao aceita os dois ramos, mas sem
+    # fixar a sondagem o teste conecta em portas reais da maquina e o caminho
+    # exercitado passa a depender do que estiver escutando nela.
+    monkeypatch.setattr("print_monitor.snmp.host_is_reachable", lambda ip, **kw: False)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
