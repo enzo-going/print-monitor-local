@@ -384,12 +384,8 @@ def test_host_is_reachable_detecta_porta_aberta():
         srv.close()
 
 
-def test_host_is_reachable_falso_quando_nada_atende():
-    livre = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    livre.bind(("127.0.0.1", 0))
-    porta = livre.getsockname()[1]
-    livre.close()
-    assert host_is_reachable("127.0.0.1", ports=(porta,), timeout=0.3) is False
+def test_host_is_reachable_falso_quando_nada_atende(closed_tcp_port):
+    assert host_is_reachable("127.0.0.1", ports=(closed_tcp_port,), timeout=0.3) is False
 
 
 def test_diagnose_silence_separa_desligado_de_snmp_desabilitado(monkeypatch):

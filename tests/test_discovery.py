@@ -38,22 +38,13 @@ def _listening_tcp_port():
     return srv, srv.getsockname()[1]
 
 
-def _free_tcp_port() -> int:
-    """Reserva e libera uma porta para obter um numero quase certamente fechado."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def test_tcp_port_open_true_and_false():
+def test_tcp_port_open_true_and_false(closed_tcp_port):
     srv, port = _listening_tcp_port()
     try:
         assert tcp_port_open("127.0.0.1", port, timeout=1.0) is True
     finally:
         srv.close()
-    assert tcp_port_open("127.0.0.1", _free_tcp_port(), timeout=0.3) is False
+    assert tcp_port_open("127.0.0.1", closed_tcp_port, timeout=0.3) is False
 
 
 def test_discover_finds_local_listener():
@@ -68,8 +59,8 @@ def test_discover_finds_local_listener():
     assert found[0].snmp_counter is None
 
 
-def test_discover_empty_when_no_ports_open():
-    found = discover("127.0.0.1/32", ports=(_free_tcp_port(),), timeout=0.3)
+def test_discover_empty_when_no_ports_open(closed_tcp_port):
+    found = discover("127.0.0.1/32", ports=(closed_tcp_port,), timeout=0.3)
     assert found == []
 
 

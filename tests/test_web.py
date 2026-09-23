@@ -517,18 +517,11 @@ def test_discover_page_get(client_and_db):
     assert "Descobrir impressoras" in resp.get_data(as_text=True)
 
 
-def test_discover_post_empty(client_and_db):
-    import socket
-
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    free_port = s.getsockname()[1]
-    s.close()
-
+def test_discover_post_empty(client_and_db, closed_tcp_port):
     client, _ = client_and_db
     resp = client.post(
         "/discover",
-        data={"network": "127.0.0.1/32", "ports": str(free_port)},
+        data={"network": "127.0.0.1/32", "ports": str(closed_tcp_port)},
         follow_redirects=True,
     )
     assert resp.status_code == 200
