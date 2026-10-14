@@ -15,7 +15,7 @@ pela **diferença entre leituras**.
 
 > Exemplo: contador `120000` em 01/06 e `124500` em 30/06 → **4500 impressões**.
 
-![Dashboard do print-monitor-local com total mensal, ranking e filtros](docs/assets/dashboard.jpg)
+![Visão mensal do print-monitor-local com a produção do período, a cobertura das impressoras e a última coleta, nos dados de demonstração do seed](docs/assets/dashboard.jpg)
 
 <sub>Dashboard local com dados fictícios de demonstração.</sub>
 
