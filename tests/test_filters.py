@@ -13,8 +13,8 @@ def _p(pid, name, ip, location):
 
 
 PRINTERS = [
-    _p(1, "Alfa", "192.168.10.21", "Financeiro"),
-    _p(2, "Beta", "192.168.20.30", "RH"),
+    _p(1, "Alfa", "192.168.1.21", "Financeiro"),
+    _p(2, "Beta", "192.168.2.30", "RH"),
     _p(3, "Gama", "10.0.0.5", "Financeiro"),
 ]
 
@@ -25,7 +25,7 @@ def test_filter_by_printer_id():
 
 
 def test_filter_by_ip_partial_case_insensitive():
-    out = filter_printers(PRINTERS, ip="192.168.10")
+    out = filter_printers(PRINTERS, ip="192.168.1")
     assert [p.name for p in out] == ["Alfa"]
 
 
@@ -44,8 +44,8 @@ def test_no_filters_returns_all():
 
 
 def test_monthly_report_respects_filters(db):
-    a = db.add_printer(name="Alfa", ip="192.168.10.21", location="Financeiro")
-    db.add_printer(name="Beta", ip="192.168.20.30", location="RH")
+    a = db.add_printer(name="Alfa", ip="192.168.1.21", location="Financeiro")
+    db.add_printer(name="Beta", ip="192.168.2.30", location="RH")
     db.add_reading(a, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=UTC))
     db.add_reading(a, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
 

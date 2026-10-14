@@ -81,8 +81,8 @@ def normalize_ip(value: str) -> str:
     esquerda. Levanta ``IPError`` com uma mensagem explicativa quando a entrada
     nao permite adivinhar o endereco pretendido.
 
-    >>> normalize_ip(" 192,168,O20,05 ")
-    '192.168.20.5'
+    >>> normalize_ip(" 192,168,O01,05 ")
+    '192.168.1.5'
     >>> normalize_ip("http://192.168.0.50:9100")
     '192.168.0.50'
     """
@@ -160,11 +160,11 @@ def normalize_network(value: str) -> str:
 
     Aceita, alem do CIDR classico, as formas que as pessoas realmente digitam:
 
-    - ``192.168.20``          -> ``192.168.20.0/24``
-    - ``192.168.20.*``        -> ``192.168.20.0/24``
-    - ``192.168.20.0``        -> ``192.168.20.0/24``
-    - ``192.168.20.1-254``    -> ``192.168.20.0/24``
-    - ``192.168.20.35``       -> ``192.168.20.0/24`` (rede do host informado)
+    - ``192.168.0``           -> ``192.168.0.0/24``
+    - ``192.168.0.*``         -> ``192.168.0.0/24``
+    - ``192.168.0.0``         -> ``192.168.0.0/24``
+    - ``192.168.0.1-254``     -> ``192.168.0.0/24``
+    - ``192.168.0.35``        -> ``192.168.0.0/24`` (rede do host informado)
 
     Levanta ``IPError`` com mensagem explicativa quando nao da para interpretar.
     """
@@ -181,7 +181,7 @@ def normalize_network(value: str) -> str:
     if match:
         text = match.group(1)
 
-    # Curinga: 192.168.20.* / 192.168.20.x
+    # Curinga: 192.168.0.* / 192.168.0.x
     text = re.sub(r"\.[*xX]+$", "", text)
 
     if "/" in text:
@@ -202,7 +202,7 @@ def normalize_network(value: str) -> str:
             ) from None
 
     dots = text.count(".")
-    if dots == 2:  # 192.168.20 -> completa o ultimo octeto
+    if dots == 2:  # 192.168.0 -> completa o ultimo octeto
         text = f"{text}.0"
     elif dots == 1:  # 192.168 -> faixa /16 e grande demais para varrer as cegas
         raise IPError(
