@@ -20,7 +20,7 @@ def app_client(tmp_path):
     db_path = tmp_path / "web.db"
     db = Database(db_path)
     db.initialize()
-    pid = db.add_printer(name="Alfa", ip="192.168.10.21", location="Financeiro")
+    pid = db.add_printer(name="Alfa", ip="192.168.1.21", location="Financeiro")
     db.add_reading(pid, 100_000, collected_at=datetime(2026, 6, 1, tzinfo=UTC))
     db.add_reading(pid, 104_500, collected_at=datetime(2026, 6, 30, tzinfo=UTC))
     db.close()

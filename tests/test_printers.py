@@ -106,7 +106,7 @@ def test_register_printer_corrige_erros_de_digitacao(db):
 
 
 def test_register_printer_corrige_zeros_a_esquerda(db):
-    assert register_printer(db, name="HP 2", ip="192.168.020.005").ip == "192.168.20.5"
+    assert register_printer(db, name="HP 2", ip="192.168.001.005").ip == "192.168.1.5"
 
 
 def test_validate_ip_explica_o_que_corrigir(db):

@@ -185,7 +185,7 @@ como estiver e corrige sozinho:
 | `192.168.O.1O`          | `192.168.0.10` |
 | `http://192.168.0.10`   | `192.168.0.10` |
 | `192.168.0.10:9100`     | `192.168.0.10` |
-| `192.168.020.005`       | `192.168.20.5` |
+| `192.168.001.005`       | `192.168.1.5`  |
 
 O que não dá para interpretar vira uma mensagem dizendo o que corrigir — “falta
 1 número”, “o número 300 é maior que 255” — em vez de um “IP inválido” seco. O
