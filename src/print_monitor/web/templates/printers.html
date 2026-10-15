@@ -68,7 +68,7 @@
     <div class="section-heading">
       <div>
         <span class="eyebrow">Importação</span>
-        <h2>Adicionar por CSV</h2>
+        <h2 id="importar-csv-titulo">Adicionar por CSV</h2>
       </div>
     </div>
     <p class="panel-intro">
@@ -78,7 +78,8 @@
     <form class="upload-form" method="post" action="/printers/import"
           enctype="multipart/form-data">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-      <input type="file" name="file" accept=".csv" required>
+      <input type="file" name="file" accept=".csv" required
+             aria-labelledby="importar-csv-titulo">
       <button type="submit">Importar arquivo</button>
     </form>
   </section>
