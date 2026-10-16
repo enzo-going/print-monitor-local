@@ -90,6 +90,10 @@
     {% if reading_summary.last_collected_at %}
       <strong class="metric-date">{{ reading_summary.last_collected_at | local_datetime }}</strong>
       <span class="metric-help">horário local deste computador</span>
+      {% if stale_collection_days %}
+        <span class="badge badge-warning">Sem coleta há {{ stale_collection_days }} dias</span>
+        <span class="metric-help">confira a tarefa agendada de coleta (PrintMonitor-Coleta)</span>
+      {% endif %}
     {% else %}
       <strong class="metric-date">Ainda não realizada</strong>
       <span class="metric-help">faça a primeira coleta para criar a linha de base</span>
