@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -678,3 +678,44 @@ def test_discover_register_sem_selecao_avisa(client_and_db):
     client, _ = client_and_db
     resp = client.post("/discover/register", data={}, follow_redirects=True)
     assert "Marque ao menos um" in resp.get_data(as_text=True)
+
+
+def _app_com_ultima_coleta(tmp_path, collected_at):
+    db_path = tmp_path / "coleta.db"
+    db = Database(db_path)
+    db.initialize()
+    pid = db.add_printer(name="Beta", ip="192.0.2.30", location="Recepcao")
+    db.add_reading(pid, 50_000, collected_at=collected_at)
+    db.close()
+    app = create_app(db_path=db_path, local_timezone=UTC)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
+    return app.test_client()
+
+
+@pytest.mark.parametrize(("dias", "aviso"), [(0, False), (3, False), (5, True), (40, True)])
+def test_painel_avisa_quando_a_coleta_parou(tmp_path, dias, aviso):
+    # Coleta diaria: ate 4 dias (fim de semana com o PC desligado) nao e alarme;
+    # passou disso, a tarefa agendada provavelmente parou e ninguem perceberia.
+    agora = datetime.now(UTC)
+    client = _app_com_ultima_coleta(tmp_path, agora - timedelta(days=dias, minutes=1))
+
+    body = client.get("/").get_data(as_text=True)
+
+    assert ("Sem coleta há" in body) is aviso
+    if aviso:
+        assert f"Sem coleta há {dias} dias" in body
+        assert "PrintMonitor-Coleta" in body
+
+
+def test_painel_sem_nenhuma_coleta_nao_mostra_aviso_de_parada(tmp_path):
+    db_path = tmp_path / "vazio.db"
+    db = Database(db_path)
+    db.initialize()
+    db.close()
+    app = create_app(db_path=db_path, local_timezone=UTC)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
+
+    body = app.test_client().get("/").get_data(as_text=True)
+
+    assert "Ainda não realizada" in body
+    assert "Sem coleta há" not in body

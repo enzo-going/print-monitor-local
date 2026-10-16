@@ -54,6 +54,20 @@ SOURCE_LABELS = {
     "seed": "Demonstração",
 }
 
+# A coleta agendada roda todo dia (scripts/agendar-coleta.ps1). Quatro dias sem
+# leitura nova cobrem um fim de semana com o computador desligado sem alarme
+# falso e ainda pegam, na mesma semana, uma tarefa que parou (conta desativada,
+# máquina trocada). Antes o painel só mostrava a data e a coleta morria calada.
+COLLECTION_STALE_AFTER = timedelta(days=4)
+
+
+def _stale_collection_days(last_collected_at: datetime | None, now: datetime) -> int | None:
+    """Dias desde a última coleta, só quando passa do limite; senão ``None``."""
+    if last_collected_at is None:
+        return None
+    age = now - last_collected_at
+    return age.days if age > COLLECTION_STALE_AFTER else None
+
 
 def _parse_int(value: str | None, default: int | None = None) -> int | None:
     try:
@@ -259,6 +273,9 @@ def create_app(
             default_backend=app.config["DEFAULT_BACKEND"],
             active_printer_count=active_printer_count,
             reading_summary=reading_summary,
+            stale_collection_days=_stale_collection_days(
+                reading_summary.last_collected_at, datetime.now(UTC)
+            ),
             latest_by_printer=latest_by_printer,
             recent_readings=recent_readings,
         )
